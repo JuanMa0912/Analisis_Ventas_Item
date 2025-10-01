@@ -26,7 +26,7 @@ SEDE_MAP = {
 # Orden preferido por empresa
 PREFERRED_ORDER = {
     "mercamio": ["La 5", "La 39", "Plaza", "Jardin", "C.sur", "Palmira"],
-    "mercatodo": ["FTA", "FLA", "MN"],
+    "mtodo": ["FTA", "FLA", "MN"],
     "bogota": ["La 80", "Chia"],
 }
 
