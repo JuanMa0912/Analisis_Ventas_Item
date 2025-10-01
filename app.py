@@ -79,7 +79,7 @@ if descr_needles:
     ok = ok | df_f["descripcion"].str.lower().str.contains(pat, na=False)
 df_f = df_f[ok]
 
-tabla = build_daily_table_all_range(df_f, start, end, footer_label=footer_label)
+tabla = build_daily_table_all_range(df_f, start, end)
 
 st.subheader("Tabla diaria consolidada (unidades)")
 if tabla.empty:
