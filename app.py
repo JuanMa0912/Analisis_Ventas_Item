@@ -106,15 +106,7 @@ else:
     # ======== GRÁFICAS ========
     st.subheader("Gráficas")
 
-        c1, c2 = st.columns(2)
-    with c1:
-        st.pyplot(fig1, use_container_width=True)
-    with c2:
-        st.pyplot(fig2, use_container_width=True)
-        st.pyplot(fig3, use_container_width=True)
-        
-
-
+     
     # Pivot numérico para gráficas
     pivot_num = build_numeric_pivot_range(df_f, start, end)
     fechas_idx = pivot_num.index
