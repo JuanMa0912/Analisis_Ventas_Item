@@ -136,25 +136,29 @@ else:
         st.pyplot(fig1, use_container_width=False)
     
     with col2:
+        # 2) Barras apiladas: Unidades por sede por día
         st.markdown("**Unidades por sede por día (barras apiladas)**")
-        fig2, ax2 = plt.subplots(figsize=(6.8, 3))
+        fig2, ax2 = plt.subplots(figsize=(7,3))   # tamaño compacto
         bottom = None
         for col in sedes_cols:
             vals = pivot_num[col].values
             if bottom is None:
-                ax2.bar(fechas_idx, vals)
+                ax2.bar(fechas_idx, vals, label=col)   # 👈 etiqueta de sede
                 bottom = vals
             else:
-                ax2.bar(fechas_idx, vals, bottom=bottom)
+                ax2.bar(fechas_idx, vals, bottom=bottom, label=col)  # 👈 etiqueta de sede
                 bottom = bottom + vals
         ax2.set_xlabel("Fecha")
         ax2.set_ylabel("Unidades")
         ax2.set_title("Unidades por sede por día (apilado)")
         ax2.grid(True, alpha=0.2, linewidth=0.5)
-        format_date_axis(ax2)
+        
+        # leyenda automática con nombres de sedes
+        ax2.legend(title="Sede", bbox_to_anchor=(1.05, 1), loc="upper left", fontsize="x-small")
         fig2.tight_layout()
+        
         st.pyplot(fig2, use_container_width=False)
-    
+
     # === Fila 2: una columna (ancho completo)
     st.markdown("**Acumulado del rango por sede**")
     acum_por_sede = pivot_num.drop(columns=["T. Dia"]).sum(axis=0).sort_values(ascending=False)
