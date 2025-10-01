@@ -43,9 +43,7 @@ c1, c2, c3 = st.columns([2,1,1])
 with c1:
     date_range = st.date_input("Rango de fechas (YYYY-MM-DD)", value=(min_d, max_d), format="YYYY-MM-DD")
 with c2:
-    limit = st.number_input("Límite de ítems", min_value=1, max_value=50, value=10, step=1)
-with c3:
-    footer_label = st.text_input("Etiqueta de total", value="Acum. Rango:")
+    limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
 
 items_all = items_display_list(df)
 items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit)
@@ -78,7 +76,7 @@ if descr_needles:
     ok = ok | df_f["descripcion"].str.lower().str.contains(pat, na=False)
 df_f = df_f[ok]
 
-tabla = build_daily_table_all_range(df_f, start, end, footer_label=footer_label)
+tabla = build_daily_table_all_range(df_f, start, end)
 
 st.subheader("Tabla diaria consolidada (unidades)")
 if tabla.empty:
