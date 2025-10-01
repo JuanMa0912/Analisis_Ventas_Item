@@ -113,7 +113,7 @@ else:
 
     # 1) Línea: Total por día
     st.markdown("**Total por día (T. Dia)**")
-    fig1 = plt.figure(figsize = (8,3))
+    fig1 = plt.figure(figsize = (5,1))
     plt.plot(fechas_idx, pivot_num["T. Dia"])
     plt.xlabel("Fecha")
     plt.ylabel("Unidades")
