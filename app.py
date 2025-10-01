@@ -106,6 +106,15 @@ else:
     # ======== GRÁFICAS ========
     st.subheader("Gráficas")
 
+        c1, c2 = st.columns(2)
+    with c1:
+        st.pyplot(fig1, use_container_width=True)
+    with c2:
+        st.pyplot(fig2, use_container_width=True)
+        st.pyplot(fig3, use_container_width=True)
+        
+
+
     # Pivot numérico para gráficas
     pivot_num = build_numeric_pivot_range(df_f, start, end)
     fechas_idx = pivot_num.index
@@ -145,14 +154,3 @@ else:
     plt.ylabel("Unidades")
     plt.title("Acumulado del rango por sede")
     st.pyplot(fig3)
-    
-    # 4) Multilínea
-    st.markdown("**Serie diaria por sede (multilínea)**")
-    fig4 = plt.figure(figsize=(9,4))   # 👈 ancho para ver varias líneas
-    for col in sedes_cols:
-        plt.plot(fechas_idx, pivot_num[col], label=col)
-    plt.xlabel("Fecha")
-    plt.ylabel("Unidades")
-    plt.title("Serie diaria por sede")
-    plt.legend(loc="upper right", fontsize="x-small")
-    st.pyplot(fig4)
