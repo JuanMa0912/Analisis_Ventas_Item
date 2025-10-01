@@ -111,18 +111,18 @@ else:
     fechas_idx = pivot_num.index
     sedes_cols = [c for c in pivot_num.columns if c != "T. Dia"]
 
-    # 1) Línea: Total por día
+      # 1) Línea: Total por día
     st.markdown("**Total por día (T. Dia)**")
-    fig1 = plt.figure(figsize = (5,1))
+    fig1 = plt.figure(figsize=(8,3))   # 👈 ancho 8, alto 3
     plt.plot(fechas_idx, pivot_num["T. Dia"])
     plt.xlabel("Fecha")
     plt.ylabel("Unidades")
     plt.title("Total por día (T. Dia)")
     st.pyplot(fig1)
-
-    # 2) Barras apiladas: Unidades por sede por día
+    
+    # 2) Barras apiladas
     st.markdown("**Unidades por sede por día (barras apiladas)**")
-    fig2 = plt.figure()
+    fig2 = plt.figure(figsize=(10,4))  # 👈 más ancho
     bottom = None
     for col in sedes_cols:
         if bottom is None:
@@ -135,24 +135,24 @@ else:
     plt.ylabel("Unidades")
     plt.title("Unidades por sede por día (apilado)")
     st.pyplot(fig2)
-
-    # 3) Barras: Acumulado del rango por sede (desc)
+    
+    # 3) Barras: Acumulado por sede
     st.markdown("**Acumulado del rango por sede**")
     acum_por_sede = pivot_num.drop(columns=["T. Dia"]).sum(axis=0).sort_values(ascending=False)
-    fig3 = plt.figure()
+    fig3 = plt.figure(figsize=(6,3))   # 👈 compacto
     plt.bar(acum_por_sede.index, acum_por_sede.values)
     plt.xticks(rotation=45, ha="right")
     plt.ylabel("Unidades")
     plt.title("Acumulado del rango por sede")
     st.pyplot(fig3)
-
-    # 4) Multilínea por sede (todas)
+    
+    # 4) Multilínea
     st.markdown("**Serie diaria por sede (multilínea)**")
-    fig4 = plt.figure()
+    fig4 = plt.figure(figsize=(9,4))   # 👈 ancho para ver varias líneas
     for col in sedes_cols:
         plt.plot(fechas_idx, pivot_num[col], label=col)
     plt.xlabel("Fecha")
     plt.ylabel("Unidades")
     plt.title("Serie diaria por sede")
-    plt.legend(loc="upper right", fontsize="small")
+    plt.legend(loc="upper right", fontsize="x-small")
     st.pyplot(fig4)
