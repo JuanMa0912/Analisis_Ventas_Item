@@ -125,7 +125,7 @@ else:
     
     with col1:
         st.markdown("**Total por día (T. Dia)**")
-        fig1, ax1 = plt.subplots(figsize=(6, 2.6))
+        fig1, ax1 = plt.subplots(figsize=(7, 3))
         ax1.plot(fechas_idx, pivot_num["T. Dia"])
         ax1.set_xlabel("Fecha")
         ax1.set_ylabel("Unidades")
