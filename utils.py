@@ -88,8 +88,8 @@ def filter_by_empresa_items_month(df: pd.DataFrame, empresa: str, items: list, m
     # month range
     m0 = month_floor(month)
     m1 = (m0 + pd.offsets.MonthEnd(0)).normalize()
-    mask = (df1["fecha"] >= m0) & (df1["fecha"] <= m1)
-    df1 = df1.loc[mask]
+    mask = (df["fecha"] >= fecha_inicio) & (df["fecha"] <= fecha_fin)
+    df = df.loc[mask]
     # items filter by id OR descripcion (case-insensitive contains if given as text)
     if items:
         # items could be id_item codes OR "id - descripcion" strings; normalize by splitting at ' - '
