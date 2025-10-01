@@ -104,45 +104,65 @@ else:
                        file_name="tabla_diaria_items_sedes_TODAS.csv", mime="text/csv")
 
     # ======== GRÁFICAS ========
+    # ======== GRÁFICAS ========
     st.subheader("Gráficas")
-
-     
+    
     # Pivot numérico para gráficas
     pivot_num = build_numeric_pivot_range(df_f, start, end)
     fechas_idx = pivot_num.index
     sedes_cols = [c for c in pivot_num.columns if c != "T. Dia"]
-
-      # 1) Línea: Total por día
-    st.markdown("**Total por día (T. Dia)**")
-    fig1 = plt.figure(figsize=(8,3))   # 👈 ancho 8, alto 3
-    plt.plot(fechas_idx, pivot_num["T. Dia"])
-    plt.xlabel("Fecha")
-    plt.ylabel("Unidades")
-    plt.title("Total por día (T. Dia)")
-    st.pyplot(fig1)
     
-    # 2) Barras apiladas
-    st.markdown("**Unidades por sede por día (barras apiladas)**")
-    fig2 = plt.figure(figsize=(10,4))  # 👈 más ancho
-    bottom = None
-    for col in sedes_cols:
-        if bottom is None:
-            plt.bar(fechas_idx, pivot_num[col])
-            bottom = pivot_num[col].values
-        else:
-            plt.bar(fechas_idx, pivot_num[col], bottom=bottom)
-            bottom = bottom + pivot_num[col].values
-    plt.xlabel("Fecha")
-    plt.ylabel("Unidades")
-    plt.title("Unidades por sede por día (apilado)")
-    st.pyplot(fig2)
+    # Helper para ejes de fechas compactos
+    import matplotlib.dates as mdates
+    def format_date_axis(ax):
+        locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
+        formatter = mdates.ConciseDateFormatter(locator)
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(formatter)
     
-    # 3) Barras: Acumulado por sede
+    # === Fila 1: dos columnas
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Total por día (T. Dia)**")
+        fig1, ax1 = plt.subplots(figsize=(6, 2.6))
+        ax1.plot(fechas_idx, pivot_num["T. Dia"])
+        ax1.set_xlabel("Fecha")
+        ax1.set_ylabel("Unidades")
+        ax1.set_title("Total por día (T. Dia)")
+        ax1.grid(True, alpha=0.2, linewidth=0.5)
+        format_date_axis(ax1)
+        fig1.tight_layout()
+        st.pyplot(fig1, use_container_width=False)
+    
+    with col2:
+        st.markdown("**Unidades por sede por día (barras apiladas)**")
+        fig2, ax2 = plt.subplots(figsize=(6.8, 3))
+        bottom = None
+        for col in sedes_cols:
+            vals = pivot_num[col].values
+            if bottom is None:
+                ax2.bar(fechas_idx, vals)
+                bottom = vals
+            else:
+                ax2.bar(fechas_idx, vals, bottom=bottom)
+                bottom = bottom + vals
+        ax2.set_xlabel("Fecha")
+        ax2.set_ylabel("Unidades")
+        ax2.set_title("Unidades por sede por día (apilado)")
+        ax2.grid(True, alpha=0.2, linewidth=0.5)
+        format_date_axis(ax2)
+        fig2.tight_layout()
+        st.pyplot(fig2, use_container_width=False)
+    
+    # === Fila 2: una columna (ancho completo)
     st.markdown("**Acumulado del rango por sede**")
     acum_por_sede = pivot_num.drop(columns=["T. Dia"]).sum(axis=0).sort_values(ascending=False)
-    fig3 = plt.figure(figsize=(6,3))   # 👈 compacto
-    plt.bar(acum_por_sede.index, acum_por_sede.values)
-    plt.xticks(rotation=45, ha="right")
-    plt.ylabel("Unidades")
-    plt.title("Acumulado del rango por sede")
-    st.pyplot(fig3)
+    fig3, ax3 = plt.subplots(figsize=(7, 2.6))
+    ax3.bar(acum_por_sede.index, acum_por_sede.values)
+    ax3.set_ylabel("Unidades")
+    ax3.set_title("Acumulado del rango por sede")
+    ax3.grid(True, axis="y", alpha=0.2, linewidth=0.5)
+    ax3.tick_params(axis='x', labelrotation=45)
+    fig3.tight_layout()
+    st.pyplot(fig3, use_container_width=False)
