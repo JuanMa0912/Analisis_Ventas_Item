@@ -12,7 +12,7 @@ SEDE_MAP = {
         "005": "C.sur",
         "006": "Palmira",
     },
-    "mercatodo": {
+    "mtodo": {
         "001": "FTA",
         "002": "FLA",
         "003": "MN",
