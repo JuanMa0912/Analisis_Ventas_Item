@@ -1,6 +1,7 @@
 
 import pandas as pd
 import numpy as np
+import unicodedata
 
 # ======= Mapeos de sedes =======
 SEDE_MAP = {
@@ -12,10 +13,10 @@ SEDE_MAP = {
         "005": "C.sur",
         "006": "Palmira",
     },
-    "mtodo": {
-        "001": "Floresta",
-        "002": "FLoralia",
-        "003": "Guaduales",
+    "mercatodo": {
+        "001": "FTA",
+        "002": "FLA",
+        "003": "MN",
     },
     "bogota": {
         "001": "La 80",
@@ -26,17 +27,23 @@ SEDE_MAP = {
 # Orden preferido por empresa
 PREFERRED_ORDER = {
     "mercamio": ["La 5", "La 39", "Plaza", "Jardin", "C.sur", "Palmira"],
-    "mtodo": ["Floresta", "FLoralia", "Guaduales"],
+    "mercatodo": ["FTA", "FLA", "MN"],
     "bogota": ["La 80", "Chia"],
 }
 
 DOW_ABBR_ES = {0: "lun", 1: "mar", 2: "mié", 3: "jue", 4: "vie", 5: "sáb", 6: "dom"}
 
+def _strip_accents(s: str) -> str:
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
 def normalize_empresa(x: str) -> str:
-    return (x or "").strip().lower()
+    s = (x or "").strip().lower()
+    s = _strip_accents(s)  # "Bogotá" -> "bogota"
+    if s in {"mtodo","m.t","m_todo"}:
+        return "mercatodo"
+    return s
 
 def normalize_id_co(x) -> str:
-    # Soporta 5 -> 005, "005" -> "005"
     try:
         xi = int(str(x).strip())
         return f"{xi:03d}"
@@ -55,7 +62,6 @@ def map_sede(empresa: str, id_co: str) -> str:
     return mapping.get(idn, idn)
 
 def parse_fecha(fecha_series: pd.Series) -> pd.Series:
-    # Acepta 20250901, '2025-09-01', '20250901.0'
     s = fecha_series.astype(str).str.replace(r"\.0$", "", regex=True).str.replace("-", "", regex=False)
     return pd.to_datetime(s, format="%Y%m%d", errors="coerce")
 
@@ -76,21 +82,33 @@ def prepare_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def items_display_list(df: pd.DataFrame):
-    # Mostrar como "id - descripcion"
     ix = (df["id_item"].astype(str) + " - " + df["descripcion"].astype(str)).dropna().unique().tolist()
     ix.sort()
     return ix
 
-def build_daily_table_all_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, footer_label="Acum. Rango:") -> pd.DataFrame:
-    """
-    Construye una única tabla diaria sumando `und_dia` por sede para TODAS las empresas, entre start y end (inclusive).
-    - Index: fecha (se completa con todos los días del rango).
-    - Columnas: sedes en orden preferido por empresa + "T. Dia".
-    - Primera columna visible: "Fecha" (formato d/abbr, ej. 7/dom).
-    - Última fila: totales del rango con etiqueta `footer_label`.
-    """
-    all_days = pd.date_range(start=start, end=end, freq="D")
+def _fmt_number(x):
+    if pd.isna(x):
+        return "-"
+    if abs(x - int(x)) < 1e-9:
+        if int(x) == 0:
+            return "-"
+        return int(x)
+    return round(x, 1)
 
+def build_numeric_pivot_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    all_days = pd.date_range(start=start, end=end, freq="D")
+    pt = pd.pivot_table(df, index="fecha", columns="sede", values="und_dia", aggfunc="sum", fill_value=0.0)
+    pt = pt.reindex(all_days, fill_value=0.0).sort_index()
+    preferred_all = []
+    for emp in ["mercamio","mercatodo","bogota"]:
+        preferred_all += [c for c in PREFERRED_ORDER.get(emp, []) if c in pt.columns]
+    preferred_all += [c for c in pt.columns if c not in preferred_all]
+    pt = pt.reindex(columns=preferred_all)
+    pt["T. Dia"] = pt.sum(axis=1)
+    return pt
+
+def build_daily_table_all_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, footer_label="Acum. Rango:") -> pd.DataFrame:
+    all_days = pd.date_range(start=start, end=end, freq="D")
     if df.empty:
         base = pd.DataFrame(index=all_days)
         base["T. Dia"] = 0.0
@@ -102,40 +120,14 @@ def build_daily_table_all_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.T
         final["T. Dia"] = final["T. Dia"].astype(float).map(_fmt_number)
         return final
 
-    pt = pd.pivot_table(
-        df, index="fecha", columns="sede", values="und_dia",
-        aggfunc="sum", fill_value=0.0
-    )
-    pt = pt.reindex(all_days, fill_value=0.0).sort_index()
-
-    # Orden preferido concatenado por empresa, luego las sedes restantes
-    preferred_all = []
-    for emp in ["mercamio","mtodo","bogota"]:
-        preferred_all += [c for c in PREFERRED_ORDER.get(emp, []) if c in pt.columns]
-    preferred_all += [c for c in pt.columns if c not in preferred_all]
-    pt = pt.reindex(columns=preferred_all)
-
-    pt["T. Dia"] = pt.sum(axis=1)
-
+    pt = build_numeric_pivot_range(df, start, end)
     fechas_fmt = [f"{i.day}/{DOW_ABBR_ES.get(i.dayofweek, '')}" for i in pt.index]
     pt.insert(0, "Fecha", fechas_fmt)
-
     acum = pt.drop(columns=["Fecha"]).sum(axis=0)
     final = pd.concat([pt.reset_index(drop=True),
                        pd.DataFrame([[footer_label] + list(acum.values)],
                                     columns=["Fecha"] + list(acum.index))],
                       ignore_index=True)
-
-    # Formateo de números
     for c in [c for c in final.columns if c != "Fecha"]:
         final[c] = final[c].astype(float).map(_fmt_number)
     return final
-
-def _fmt_number(x):
-    if pd.isna(x):
-        return "-"
-    if abs(x - int(x)) < 1e-9:
-        if int(x) == 0:
-            return "-"      # 👈 guion en lugar de cero
-        return int(x)
-    return round(x, 1)
