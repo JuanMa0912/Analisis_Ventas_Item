@@ -3,19 +3,16 @@ import streamlit as st
 import pandas as pd
 from utils import (
     prepare_dataframe, items_display_list, filter_by_empresa_items_month,
-    build_daily_table, month_floor
+    build_daily_table_all, month_floor
 )
 
-st.set_page_config(page_title="Ventas por Ítem x Sedes (Diario)", layout="wide")
+st.set_page_config(page_title="Ventas x Ítem — Tabla única (todas las empresas)", layout="wide")
 
-st.title("📊 Ventas por Ítem(s) x Sedes — Diario (Multi-empresa)")
-st.caption("Carga tu CSV, elige **mes** y **ítems**; se muestran tablas **responsivas** por empresa (Mercamio, Mercatodo, Bogotá) con T. Dia y fila **Acum. Mes**.")
+st.title("📊 Ventas por Ítem(s) x Sedes — **Tabla única** (todas las empresas)")
+st.caption("Basado en tu imagen: una sola tabla con **Fecha** (formato d/abr) + todas las sedes de Mercamio, Mercatodo y Bogotá; incluye **T. Dia** y fila **Acum. Mes**.")
 
-with st.expander("Formato esperado del CSV (separado por comas)", expanded=False):
-    st.markdown("""
-    Columnas requeridas:
-    `empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum`
-    """)
+with st.expander("Formato esperado del CSV", expanded=False):
+    st.markdown("`empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum`")
 
 uploaded = st.file_uploader("📥 Cargar CSV", type=["csv"])
 
@@ -23,7 +20,6 @@ if uploaded is None:
     st.info("Sube un archivo CSV para comenzar.")
     st.stop()
 
-# Lectura CSV
 try:
     raw = pd.read_csv(uploaded)
 except Exception as e:
@@ -36,12 +32,7 @@ except Exception as e:
     st.error(f"Error de formato: {e}")
     st.stop()
 
-# Lista de empresas presentes
-empresas_presentes = (
-    df["empresa"].dropna().str.lower().map(lambda s: s.strip()).unique().tolist()
-)
-
-# Determinar mes por defecto usando max fecha global
+# Mes por defecto: mes de la fecha máxima
 if df["fecha"].notna().any():
     default_month = month_floor(df["fecha"].max())
 else:
@@ -50,52 +41,36 @@ else:
 
 c1, c2 = st.columns([2, 1])
 with c1:
-    month_sel = st.date_input("Mes", value=default_month, format="YYYY-MM-DD")
+    month_sel = st.date_input("Mes (YYYY-MM-DD)", value=default_month, format="YYYY-MM-DD")
 with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=50, value=10, step=1)
 
-# Items globales (todos los de todas las empresas para facilitar)
-all_items = items_display_list(df)
-items_sel = st.multiselect("Ítems (por ID o descripción)", all_items, max_selections=limit)
-
+items_all = items_display_list(df)
+items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit)
 if not items_sel:
-    st.info("Selecciona al menos un ítem para continuar.")
+    st.info("Selecciona al menos un ítem.")
     st.stop()
 
-# Tabs por empresa para ver TODAS
-tabs = st.tabs([e.capitalize() for e in empresas_presentes])
+# Filtrar por mes + ítems (todas las empresas)
+# Reutilizamos filter_by_empresa_items_month por bloques y concatenamos
+month_ts = pd.to_datetime(month_sel)
+dfs = []
+for emp in df["empresa_norm"].unique():
+    dfe = filter_by_empresa_items_month(df, emp, items_sel, month_ts)
+    if not dfe.empty:
+        dfs.append(dfe)
+df_f = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame(columns=df.columns)
 
-tables_to_download = {}
+tabla = build_daily_table_all(df_f)
 
-for tab, emp in zip(tabs, empresas_presentes):
-    with tab:
-        df_f = filter_by_empresa_items_month(df, emp, items_sel, pd.to_datetime(month_sel))
-        tabla = build_daily_table(df_f, emp)
-        st.subheader(emp.capitalize())
-        if tabla.empty:
-            st.warning("Sin datos para este filtro.")
-        else:
-            st.dataframe(tabla, use_container_width=True)
-            csv_bytes = tabla.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                f"⬇️ Descargar CSV — {emp.capitalize()}",
-                data=csv_bytes,
-                file_name=f"tabla_diaria_items_sedes_{emp}.csv",
-                mime="text/csv",
-                key=f"dl_{emp}"
-            )
-            tables_to_download[emp] = csv_bytes
-
-# Opción: descargar todas las tablas en un ZIP si hay más de una
-if len(tables_to_download) > 1:
-    import io, zipfile
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for emp, data in tables_to_download.items():
-            z.writestr(f"tabla_diaria_items_sedes_{emp}.csv", data)
+st.subheader("Tabla diaria consolidada (unidades)")
+if tabla.empty:
+    st.warning("No se encontraron registros para los filtros aplicados.")
+else:
+    st.dataframe(tabla, use_container_width=True)
     st.download_button(
-        "⬇️ Descargar TODAS las tablas (ZIP)",
-        data=zip_buf.getvalue(),
-        file_name="tablas_diarias_por_empresa.zip",
-        mime="application/zip"
+        "⬇️ Descargar CSV de la tabla",
+        data=tabla.to_csv(index=False).encode("utf-8"),
+        file_name="tabla_diaria_items_sedes_TODAS.csv",
+        mime="text/csv"
     )

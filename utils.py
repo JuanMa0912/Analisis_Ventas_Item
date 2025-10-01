@@ -163,3 +163,61 @@ def items_display_list(df: pd.DataFrame):
     ix = (df["id_item"].astype(str) + " - " + df["descripcion"].astype(str)).dropna().unique().tolist()
     ix.sort()
     return ix
+
+
+def build_daily_table_all(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Construye una única tabla diaria sumando `und_dia` por sede para TODAS las empresas presentes.
+    - La primera columna es la Fecha formateada "d/abbr"
+    - Luego columnas de sedes en orden preferido por empresa (Mercamio, Mercatodo, Bogotá)
+    - Última columna "T. Dia"
+    - Fila final "Acum. Mes:" con los acumulados por sede y total
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    # Pivot diario por sede
+    pt = pd.pivot_table(
+        df,
+        index="fecha",
+        columns="sede",
+        values="und_dia",
+        aggfunc="sum",
+        fill_value=0.0
+    ).sort_index()
+
+    # Armar orden deseado concatenando los preferidos de cada empresa y luego los restantes
+    preferred_all = []
+    for emp in ["mercamio", "mercatodo", "bogota"]:
+        preferred_all += [c for c in PREFERRED_ORDER.get(emp, []) if c in pt.columns]
+    # Agregar cualquier sede restante que no esté en las listas anteriores
+    preferred_all += [c for c in pt.columns if c not in preferred_all]
+
+    pt = pt.reindex(columns=preferred_all)
+
+    # Total por día
+    pt["T. Dia"] = pt.sum(axis=1)
+
+    # Formato de la columna fecha "d/xxx"
+    dow = pt.index.dayofweek
+    fechas_fmt = [f"{i.day}/{DOW_ABBR_ES.get(dw, '')}" for i, dw in zip(pt.index, dow)]
+    pt.insert(0, "Fecha", fechas_fmt)
+
+    # Fila de acumulado del mes
+    acum = pt.drop(columns=["Fecha"]).sum(axis=0)
+    acum_row = pd.DataFrame([["Acum. Mes:"] + list(acum.values)], columns=["Fecha"] + list(acum.index))
+    final = pd.concat([pt.reset_index(drop=True), acum_row], ignore_index=True)
+
+    # Formato numérico bonito
+    def _fmt_number(x):
+        if pd.isna(x):
+            return 0
+        if abs(x - int(x)) < 1e-9:
+            return int(x)
+        return round(x, 1)
+
+    num_cols = [c for c in final.columns if c != "Fecha"]
+    for c in num_cols:
+        final[c] = final[c].astype(float).map(_fmt_number)
+
+    return final
