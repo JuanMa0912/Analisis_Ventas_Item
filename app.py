@@ -45,8 +45,6 @@ with c1:
     date_range = st.date_input("Rango de fechas (YYYY-MM-DD)", value=(min_d, max_d), format="YYYY-MM-DD")
 with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
-with c3:
-    footer_label = st.text_input("Etiqueta de total", value="Acum. Rango:")
 
 # Items
 items_all = items_display_list(df)
