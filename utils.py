@@ -110,7 +110,7 @@ def build_daily_table_all_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.T
 
     # Orden preferido concatenado por empresa, luego las sedes restantes
     preferred_all = []
-    for emp in ["mercamio","mercatodo","bogota"]:
+    for emp in ["mercamio","mtodo","bogota"]:
         preferred_all += [c for c in PREFERRED_ORDER.get(emp, []) if c in pt.columns]
     preferred_all += [c for c in pt.columns if c not in preferred_all]
     pt = pt.reindex(columns=preferred_all)
@@ -133,7 +133,9 @@ def build_daily_table_all_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.T
 
 def _fmt_number(x):
     if pd.isna(x):
-        return 0
+        return "-"
     if abs(x - int(x)) < 1e-9:
+        if int(x) == 0:
+            return "-"      # 👈 guion en lugar de cero
         return int(x)
     return round(x, 1)
