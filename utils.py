@@ -13,10 +13,10 @@ SEDE_MAP = {
         "005": "C.sur",
         "006": "Palmira",
     },
-    "mercatodo": {
-        "001": "FTA",
-        "002": "FLA",
-        "003": "MN",
+    "mtodo": {
+        "001": "Floresta",
+        "002": "Floralia",
+        "003": "Guaduales",
     },
     "bogota": {
         "001": "La 80",
@@ -27,7 +27,7 @@ SEDE_MAP = {
 # Orden preferido por empresa
 PREFERRED_ORDER = {
     "mercamio": ["La 5", "La 39", "Plaza", "Jardin", "C.sur", "Palmira"],
-    "mercatodo": ["FTA", "FLA", "MN"],
+    "mtodo": ["Floresta", "Floralia", "Guaduales"],
     "bogota": ["La 80", "Chia"],
 }
 
@@ -40,7 +40,7 @@ def normalize_empresa(x: str) -> str:
     s = (x or "").strip().lower()
     s = _strip_accents(s)  # "Bogotá" -> "bogota"
     if s in {"mtodo","m.t","m_todo"}:
-        return "mercatodo"
+        return "mtodo"
     return s
 
 def normalize_id_co(x) -> str:
