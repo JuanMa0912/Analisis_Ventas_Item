@@ -13,9 +13,9 @@ SEDE_MAP = {
         "006": "Palmira",
     },
     "mtodo": {
-        "001": "FTA",
-        "002": "FLA",
-        "003": "MN",
+        "001": "Floresta",
+        "002": "FLoralia",
+        "003": "Guaduales",
     },
     "bogota": {
         "001": "La 80",
