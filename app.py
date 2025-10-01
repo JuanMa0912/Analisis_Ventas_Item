@@ -65,7 +65,7 @@ def items_display_list(df: pd.DataFrame):
 def build_daily_table_all(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, footer_label="Acum. Rango:") -> pd.DataFrame:
     if df.empty:
         days = pd.date_range(start=start, end=end, freq="D")
-        base = pd.DataFrame({"Fecha": [f\"{d.day}/{DOW_ABBR_ES.get(d.dayofweek,'')}\" for d in days]})
+        base = pd.DataFrame({"Fecha": [f"{d.day}/{DOW_ABBR_ES.get(d.dayofweek,'')}" for d in days]})
         base["T. Dia"] = 0
         base = pd.concat([base, pd.DataFrame([{"Fecha": footer_label, "T. Dia": 0}])], ignore_index=True)
         return base
