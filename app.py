@@ -41,7 +41,7 @@ else:
 
 c1, c2 = st.columns([2, 1])
 with c1:
-    month_sel = st.date_input("Mes (YYYY-MM-DD)", value=(fecha_inicial, fecha_final), format="YYYY-MM-DD")
+    month_sel = st.date_input("Mes (YYYY-MM-DD)", value=default_month, format="YYYY-MM-DD")
 with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=50, value=10, step=1)
 
