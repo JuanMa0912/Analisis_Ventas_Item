@@ -100,7 +100,7 @@ def build_numeric_pivot_range(df: pd.DataFrame, start: pd.Timestamp, end: pd.Tim
     pt = pd.pivot_table(df, index="fecha", columns="sede", values="und_dia", aggfunc="sum", fill_value=0.0)
     pt = pt.reindex(all_days, fill_value=0.0).sort_index()
     preferred_all = []
-    for emp in ["mercamio","mercatodo","bogota"]:
+    for emp in ["mercamio","mtodo","bogota"]:
         preferred_all += [c for c in PREFERRED_ORDER.get(emp, []) if c in pt.columns]
     preferred_all += [c for c in pt.columns if c not in preferred_all]
     pt = pt.reindex(columns=preferred_all)
