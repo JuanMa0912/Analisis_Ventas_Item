@@ -97,6 +97,7 @@ else:
     if "T. Dia" in tabla.columns:
         sty = sty.set_properties(subset=['T. Dia'], **{'font-weight': 'bold'})
     sty = style_headers(sty)
+    sty = sty.format(precision=2, na_rep="-")  # 👈 Redondear a 2 decimales máx
 
     st.dataframe(sty, use_container_width=True)
 
@@ -105,7 +106,6 @@ else:
     # =======================
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        # Escribir hoja
         tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
 
         workbook  = writer.book
@@ -116,13 +116,13 @@ else:
         fmt_sunday  = workbook.add_format({"font_color": "red", "bold": True})
         fmt_total   = workbook.add_format({"bold": True, "bg_color": "#e6f2ff"})
         fmt_bold    = workbook.add_format({"bold": True})
+        fmt_num_flex = workbook.add_format({"num_format": "#,##0.##"})  # 👈 enteros o máx 2 decimales
 
         # Cabeceras en negrita
         worksheet.set_row(0, None, fmt_header)
 
-        # Formato condicional: domingos (busca "/dom" en la columna A)
-        # Aplica desde la fila 2 hasta la penúltima (la última es el acumulado)
-        last_data_row = len(tabla)  # incluye header aparte (Excel es 1-indexed en fórmulas)
+        # Formato condicional: domingos
+        last_data_row = len(tabla)
         worksheet.conditional_format(
             1, 0, last_data_row-1, len(tabla.columns)-1,
             {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
@@ -131,15 +131,18 @@ else:
         # Resaltar última fila (acumulado)
         worksheet.set_row(last_data_row, None, fmt_total)
 
-        # Poner en negrita la columna "T. Dia" completa
+        # Columna T. Dia en negrita
         if "T. Dia" in tabla.columns:
             col_idx = tabla.columns.get_loc("T. Dia")
             worksheet.set_column(col_idx, col_idx, None, fmt_bold)
 
-        # Ajuste automático de ancho de columnas
+        # Ajuste de ancho + formato numérico
         for i, col in enumerate(tabla.columns):
             col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-            worksheet.set_column(i, i, col_width)
+            if col != "Fecha":
+                worksheet.set_column(i, i, col_width, fmt_num_flex)
+            else:
+                worksheet.set_column(i, i, col_width)
 
     st.download_button(
         "⬇️ Descargar Excel",
@@ -151,12 +154,10 @@ else:
     # ======== GRÁFICAS ========
     st.subheader("Gráficas")
 
-    # Pivot numérico para gráficas
     pivot_num = build_numeric_pivot_range(df_f, start, end)
     fechas_idx = pivot_num.index
     sedes_cols = [c for c in pivot_num.columns if c != "T. Dia"]
 
-    # Helper para ejes de fechas compactos
     import matplotlib.dates as mdates
     def format_date_axis(ax):
         locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
@@ -164,7 +165,6 @@ else:
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(formatter)
 
-    # === Fila 1: dos columnas
     col1, col2 = st.columns(2)
 
     with col1:
@@ -199,7 +199,6 @@ else:
         fig2.tight_layout()
         st.pyplot(fig2, use_container_width=False)
 
-    # === Fila 2: ancho completo
     st.markdown("**Acumulado del rango por sede**")
     acum_por_sede = pivot_num.drop(columns=["T. Dia"]).sum(axis=0).sort_values(ascending=False)
     fig3, ax3 = plt.subplots(figsize=(7, 2.6))
