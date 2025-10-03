@@ -160,23 +160,23 @@ else:
 
     # --- 1) Línea: Total por día (T. Dia) ---
     df_line = pivot_num.rename_axis('fecha').reset_index()
-    df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})  # evitar el punto en el nombre
+    df_line['fecha_dia'] = pd.to_datetime(df_line['fecha']).dt.normalize()
+    df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})
     
     line_chart = (
         alt.Chart(df_line, title="Total por día (T. Dia)")
         .mark_line(point=True)
         .encode(
-            x=alt.X("fecha:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
+            x=alt.X("fecha_dia:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
             y=alt.Y("T_Dia:Q", axis=alt.Axis(title="Unidades")),
             tooltip=[
-                alt.Tooltip("fecha:T", title="Fecha", format="%d-%b-%Y"),
+                alt.Tooltip("fecha_dia:T", title="Fecha", format="%d-%b-%Y"),
                 alt.Tooltip("T_Dia:Q", title="T. Dia", format=",.2f"),
             ],
         )
         .properties(height=260)
         .interactive()
     )
-    
     st.altair_chart(line_chart, use_container_width=True)
 
 
