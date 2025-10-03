@@ -156,13 +156,12 @@ else:
 
     # Pivot numérico (todas las fechas del rango, sedes en columnas)
     pivot_num = build_numeric_pivot_range(df_f, start, end)  # incluye 'T. Dia'
-    fechas_idx = pivot_num.index
 
     # --- 1) Línea: Total por día (T. Dia) ---
     df_line = pivot_num.rename_axis('fecha').reset_index()
-    df_line['fecha_dia'] = pd.to_datetime(df_line['fecha']).dt.normalize()
-    df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})
-    
+    df_line['fecha_dia'] = pd.to_datetime(df_line['fecha']).dt.date  # 👈 solo fecha (sin hora)
+    df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})  # evitar el punto en el nombre
+
     line_chart = (
         alt.Chart(df_line, title="Total por día (T. Dia)")
         .mark_line(point=True)
@@ -170,7 +169,7 @@ else:
             x=alt.X("fecha_dia:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
             y=alt.Y("T_Dia:Q", axis=alt.Axis(title="Unidades")),
             tooltip=[
-                alt.Tooltip("fecha_dia:T", title="Fecha", format="%d-%b-%Y"),
+                alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
                 alt.Tooltip("T_Dia:Q", title="T. Dia", format=",.2f"),
             ],
         )
@@ -179,15 +178,14 @@ else:
     )
     st.altair_chart(line_chart, use_container_width=True)
 
-
     # --- 2) Barras apiladas: Unidades por sede por día ---
     df_stack = (
         pivot_num.drop(columns=["T. Dia"])
         .rename_axis("fecha").reset_index()
         .melt(id_vars="fecha", var_name="sede", value_name="unidades")
     )
-    df_stack["fecha_dia"] = pd.to_datetime(df_stack["fecha"]).dt.normalize()
-    
+    df_stack["fecha_dia"] = pd.to_datetime(df_stack["fecha"]).dt.date  # 👈 solo fecha
+
     stack_chart = (
         alt.Chart(df_stack, title="Unidades por sede por día (apilado)")
         .mark_bar()
@@ -199,7 +197,7 @@ else:
             y=alt.Y("unidades:Q", stack="zero", axis=alt.Axis(title="Unidades")),
             color=alt.Color("sede:N", legend=alt.Legend(title="Sede")),
             tooltip=[
-                alt.Tooltip("fecha_dia:T", title="Fecha", format="%d-%b-%Y"),
+                alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
                 alt.Tooltip("sede:N", title="Sede"),
                 alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
             ],
@@ -208,7 +206,6 @@ else:
         .interactive()
     )
     st.altair_chart(stack_chart, use_container_width=True)
-
 
     # --- 3) Barras: Acumulado del rango por sede ---
     acum_por_sede = (
@@ -223,7 +220,11 @@ else:
         .mark_bar()
         .encode(
             x=alt.X("sede:N", sort="-y", axis=alt.Axis(title="Sede")),
-            y=alt.Y("unidades:Q", axis=alt.Axis(title="Unidades"))
+            y=alt.Y("unidades:Q", axis=alt.Axis(title="Unidades")),
+            tooltip=[
+                alt.Tooltip("sede:N", title="Sede"),
+                alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
+            ],
         )
         .properties(height=260)
         .interactive()
