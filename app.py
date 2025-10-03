@@ -210,7 +210,7 @@ else:
                         axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
                 y=alt.Y("sede:N", sort='-x', axis=alt.Axis(title="Sede")),
                 color=alt.Color("unidades:Q",
-                                scale=alt.Scale(scheme="blues"),  # puedes probar "greens", "inferno", etc.
+                                scale=alt.Scale(scheme="inferno"),  # puedes probar "greens", "inferno", etc.
                                 legend=alt.Legend(title="Unidades")),
                 tooltip=[
                     alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
