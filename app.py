@@ -159,18 +159,26 @@ else:
     fechas_idx = pivot_num.index
 
     # --- 1) Línea: Total por día (T. Dia) ---
-    df_line = pivot_num.rename_axis('fecha').reset_index()[['fecha', 'T. Dia']]
+    df_line = pivot_num.rename_axis('fecha').reset_index()
+    df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})  # evitar el punto en el nombre
+    
     line_chart = (
         alt.Chart(df_line, title="Total por día (T. Dia)")
-        .mark_line()
+        .mark_line(point=True)
         .encode(
             x=alt.X("fecha:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
-            y=alt.Y("T. Dia:Q", axis=alt.Axis(title="Unidades"))
+            y=alt.Y("T_Dia:Q", axis=alt.Axis(title="Unidades")),
+            tooltip=[
+                alt.Tooltip("fecha:T", title="Fecha", format="%d-%b-%Y"),
+                alt.Tooltip("T_Dia:Q", title="T. Dia", format=",.2f"),
+            ],
         )
         .properties(height=260)
         .interactive()
     )
+    
     st.altair_chart(line_chart, use_container_width=True)
+
 
     # --- 2) Barras apiladas: Unidades por sede por día ---
     df_stack = (
