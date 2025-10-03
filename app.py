@@ -157,13 +157,11 @@ else:
     # Pivot numérico (todas las fechas del rango, sedes en columnas)
     pivot_num = build_numeric_pivot_range(df_f, start, end)  # incluye 'T. Dia' :contentReference[oaicite:2]{index=2}
 
-    # --- DataFrames para charts ---
-    # 1) Línea total por día (renombrar "T. Dia" y fecha solo día)
+    # --- DataFrames base para charts ---
     df_line = pivot_num.rename_axis('fecha').reset_index()
     df_line['fecha_dia'] = pd.to_datetime(df_line['fecha']).dt.date
     df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})
 
-    # 2) Apilado por sede por día (melt + fecha solo día)
     df_stack = (
         pivot_num.drop(columns=["T. Dia"])
         .rename_axis("fecha").reset_index()
@@ -171,7 +169,6 @@ else:
     )
     df_stack["fecha_dia"] = pd.to_datetime(df_stack["fecha"]).dt.date
 
-    # 3) Acumulado por sede
     acum_por_sede = (
         pivot_num.drop(columns=["T. Dia"])
         .sum(axis=0)
@@ -180,19 +177,50 @@ else:
         .reset_index(name="unidades")
     )
 
+    # ==== Controles ====
+    st.write("### Opciones de visualización")
+    cc1, cc2 = st.columns([1,1])
+    with cc1:
+        freq_label = st.selectbox("Agrupar por", ["Día", "Semana", "Mes"], index=0)
+    with cc2:
+        heat_scheme = st.selectbox(
+            "Paleta del mapa de calor",
+            ["blues", "greens", "oranges", "purples", "viridis", "plasma", "magma", "inferno", "redblue", "tealblues"],
+            index=0
+        )
+
+    # Mapear frecuencia a pandas offset
+    freq_map = {"Día": "D", "Semana": "W-MON", "Mes": "MS"}
+    freq = freq_map[freq_label]
+
+    # ---- Agregación según frecuencia seleccionada ----
+    # Línea (T_Dia)
+    df_line_g = df_line.copy()
+    df_line_g["periodo"] = pd.to_datetime(df_line_g["fecha_dia"])
+    df_line_g = df_line_g.groupby(pd.Grouper(key="periodo", freq=freq), as_index=False)["T_Dia"].sum()
+    df_line_g["periodo"] = df_line_g["periodo"].dt.date
+
+    # Stack / Heatmap
+    df_stack_g = df_stack.copy()
+    df_stack_g["periodo"] = pd.to_datetime(df_stack_g["fecha_dia"])
+    df_stack_g = (
+        df_stack_g.groupby([pd.Grouper(key="periodo", freq=freq), "sede"], as_index=False)["unidades"].sum()
+    )
+    df_stack_g["periodo"] = df_stack_g["periodo"].dt.date
+
     # === Diseño en dos columnas ===
     gcol1, gcol2 = st.columns(2)
 
     # --- Columna izquierda: Línea + Heatmap ---
     with gcol1:
         line_chart = (
-            alt.Chart(df_line, title="Total por día (T. Dia)")
+            alt.Chart(df_line_g, title=f"Total por {freq_label.lower()} (T. Dia)")
             .mark_line(point=True)
             .encode(
-                x=alt.X("fecha_dia:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
+                x=alt.X("periodo:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
                 y=alt.Y("T_Dia:Q", axis=alt.Axis(title="Unidades")),
                 tooltip=[
-                    alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
+                    alt.Tooltip("periodo:T", title="Fecha", format="%Y-%m-%d"),
                     alt.Tooltip("T_Dia:Q", title="T. Dia", format=",.2f"),
                 ],
             )
@@ -201,19 +229,16 @@ else:
         )
         st.altair_chart(line_chart, use_container_width=True)
 
-        # Heatmap: Fecha × Sede (intensidad = unidades)
         heatmap = (
-            alt.Chart(df_stack, title="Mapa de calor: unidades por sede y día")
+            alt.Chart(df_stack_g, title=f"Mapa de calor: unidades por sede y {freq_label.lower()}")
             .mark_rect()
             .encode(
-                x=alt.X("fecha_dia:T",
-                        axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
+                x=alt.X("periodo:T", axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
                 y=alt.Y("sede:N", sort='-x', axis=alt.Axis(title="Sede")),
-                color=alt.Color("unidades:Q",
-                                scale=alt.Scale(scheme="blues"),  # puedes probar "greens", "inferno", etc.
+                color=alt.Color("unidades:Q", scale=alt.Scale(scheme=heat_scheme),
                                 legend=alt.Legend(title="Unidades")),
                 tooltip=[
-                    alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
+                    alt.Tooltip("periodo:T", title="Fecha", format="%Y-%m-%d"),
                     alt.Tooltip("sede:N", title="Sede"),
                     alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
                 ],
@@ -226,15 +251,14 @@ else:
     # --- Columna derecha: Apilado + Acumulado ---
     with gcol2:
         stack_chart = (
-            alt.Chart(df_stack, title="Unidades por sede por día (apilado)")
+            alt.Chart(df_stack_g, title=f"Unidades por sede por {freq_label.lower()} (apilado)")
             .mark_bar()
             .encode(
-                x=alt.X("fecha_dia:T",
-                        axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
+                x=alt.X("periodo:T", axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
                 y=alt.Y("unidades:Q", stack="zero", axis=alt.Axis(title="Unidades")),
                 color=alt.Color("sede:N", legend=alt.Legend(title="Sede")),
                 tooltip=[
-                    alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
+                    alt.Tooltip("periodo:T", title="Fecha", format="%Y-%m-%d"),
                     alt.Tooltip("sede:N", title="Sede"),
                     alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
                 ],
