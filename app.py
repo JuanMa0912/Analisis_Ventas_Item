@@ -186,18 +186,29 @@ else:
         .rename_axis("fecha").reset_index()
         .melt(id_vars="fecha", var_name="sede", value_name="unidades")
     )
+    df_stack["fecha_dia"] = pd.to_datetime(df_stack["fecha"]).dt.normalize()
+    
     stack_chart = (
         alt.Chart(df_stack, title="Unidades por sede por día (apilado)")
         .mark_bar()
         .encode(
-            x=alt.X("fecha:T", axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
+            x=alt.X(
+                "fecha_dia:T",
+                axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45),
+            ),
             y=alt.Y("unidades:Q", stack="zero", axis=alt.Axis(title="Unidades")),
-            color=alt.Color("sede:N", legend=alt.Legend(title="Sede"))
+            color=alt.Color("sede:N", legend=alt.Legend(title="Sede")),
+            tooltip=[
+                alt.Tooltip("fecha_dia:T", title="Fecha", format="%d-%b-%Y"),
+                alt.Tooltip("sede:N", title="Sede"),
+                alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
+            ],
         )
         .properties(height=320)
         .interactive()
     )
     st.altair_chart(stack_chart, use_container_width=True)
+
 
     # --- 3) Barras: Acumulado del rango por sede ---
     acum_por_sede = (
