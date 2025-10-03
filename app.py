@@ -1,5 +1,4 @@
-
-import os, sys
+import os, sys, io
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -82,7 +81,7 @@ st.subheader("Tabla diaria consolidada (unidades)")
 if tabla.empty:
     st.warning("No se encontraron registros para los filtros aplicados.")
 else:
-    # Estilos con Styler
+    # Estilos en pantalla (Streamlit)
     def style_headers(df_styler):
         return df_styler.set_table_styles([{'selector': 'th', 'props': [('font-weight', 'bold')]}])
     def style_totals(row):
@@ -100,18 +99,63 @@ else:
     sty = style_headers(sty)
 
     st.dataframe(sty, use_container_width=True)
-    st.download_button("⬇️ Descargar CSV", data=tabla.to_csv(index=False).encode("utf-8"),
-                       file_name="tabla_diaria_items_sedes_TODAS.csv", mime="text/csv")
+
+    # =======================
+    # Descarga en Excel (.xlsx)
+    # =======================
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        # Escribir hoja
+        tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
+
+        workbook  = writer.book
+        worksheet = writer.sheets["Tabla Consolidada"]
+
+        # Formatos
+        fmt_header  = workbook.add_format({"bold": True})
+        fmt_sunday  = workbook.add_format({"font_color": "red", "bold": True})
+        fmt_total   = workbook.add_format({"bold": True, "bg_color": "#e6f2ff"})
+        fmt_bold    = workbook.add_format({"bold": True})
+
+        # Cabeceras en negrita
+        worksheet.set_row(0, None, fmt_header)
+
+        # Formato condicional: domingos (busca "/dom" en la columna A)
+        # Aplica desde la fila 2 hasta la penúltima (la última es el acumulado)
+        last_data_row = len(tabla)  # incluye header aparte (Excel es 1-indexed en fórmulas)
+        worksheet.conditional_format(
+            1, 0, last_data_row-1, len(tabla.columns)-1,
+            {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
+        )
+
+        # Resaltar última fila (acumulado)
+        worksheet.set_row(last_data_row, None, fmt_total)
+
+        # Poner en negrita la columna "T. Dia" completa
+        if "T. Dia" in tabla.columns:
+            col_idx = tabla.columns.get_loc("T. Dia")
+            worksheet.set_column(col_idx, col_idx, None, fmt_bold)
+
+        # Ajuste automático de ancho de columnas
+        for i, col in enumerate(tabla.columns):
+            col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
+            worksheet.set_column(i, i, col_width)
+
+    st.download_button(
+        "⬇️ Descargar Excel",
+        data=output.getvalue(),
+        file_name="tabla_diaria_items_sedes_TODAS.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
     # ======== GRÁFICAS ========
-    # ======== GRÁFICAS ========
     st.subheader("Gráficas")
-    
+
     # Pivot numérico para gráficas
     pivot_num = build_numeric_pivot_range(df_f, start, end)
     fechas_idx = pivot_num.index
     sedes_cols = [c for c in pivot_num.columns if c != "T. Dia"]
-    
+
     # Helper para ejes de fechas compactos
     import matplotlib.dates as mdates
     def format_date_axis(ax):
@@ -119,10 +163,10 @@ else:
         formatter = mdates.ConciseDateFormatter(locator)
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(formatter)
-    
+
     # === Fila 1: dos columnas
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("**Total por día (T. Dia)**")
         fig1, ax1 = plt.subplots(figsize=(7, 3))
@@ -134,32 +178,28 @@ else:
         format_date_axis(ax1)
         fig1.tight_layout()
         st.pyplot(fig1, use_container_width=False)
-    
+
     with col2:
-        # 2) Barras apiladas: Unidades por sede por día
         st.markdown("**Unidades por sede por día (barras apiladas)**")
-        fig2, ax2 = plt.subplots(figsize=(7,3))   # tamaño compacto
+        fig2, ax2 = plt.subplots(figsize=(7, 3))
         bottom = None
         for col in sedes_cols:
             vals = pivot_num[col].values
             if bottom is None:
-                ax2.bar(fechas_idx, vals, label=col)   # 👈 etiqueta de sede
+                ax2.bar(fechas_idx, vals, label=col)
                 bottom = vals
             else:
-                ax2.bar(fechas_idx, vals, bottom=bottom, label=col)  # 👈 etiqueta de sede
+                ax2.bar(fechas_idx, vals, bottom=bottom, label=col)
                 bottom = bottom + vals
         ax2.set_xlabel("Fecha")
         ax2.set_ylabel("Unidades")
         ax2.set_title("Unidades por sede por día (apilado)")
         ax2.grid(True, alpha=0.2, linewidth=0.5)
-        
-        # leyenda automática con nombres de sedes
         ax2.legend(title="Sede", bbox_to_anchor=(1.05, 1), loc="upper left", fontsize="x-small")
         fig2.tight_layout()
-        
         st.pyplot(fig2, use_container_width=False)
 
-    # === Fila 2: una columna (ancho completo)
+    # === Fila 2: ancho completo
     st.markdown("**Acumulado del rango por sede**")
     acum_por_sede = pivot_num.drop(columns=["T. Dia"]).sum(axis=0).sort_values(ascending=False)
     fig3, ax3 = plt.subplots(figsize=(7, 2.6))
