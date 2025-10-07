@@ -111,55 +111,63 @@ else:
     tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
     # --- Guardar Excel (con bordes) ---
-    with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-        tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
-        workbook  = writer.book
-        worksheet = writer.sheets["Tabla Consolidada"]
+with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
+    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
+    workbook  = writer.book
+    worksheet = writer.sheets["Tabla Consolidada"]
 
-        # === FORMATOS ===
-        fmt_header   = workbook.add_format({"bold": True, "border": 1})
-        fmt_sunday   = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
-        fmt_total    = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
-        fmt_bold     = workbook.add_format({"bold": True, "border": 1})
-        fmt_num_flex = workbook.add_format({"num_format": "#,##0.##", "border": 1})
-        fmt_borde_exterior = workbook.add_format({"border": 6})  # 👈 borde grueso exterior
+    # === FORMATOS ===
+    fmt_header   = workbook.add_format({"bold": True, "border": 1})
+    fmt_sunday   = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
+    fmt_total    = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
+    fmt_bold     = workbook.add_format({"bold": True, "border": 1})
+    fmt_num_flex = workbook.add_format({"num_format": "#,##0.##", "border": 1})
+    fmt_borde_exterior = workbook.add_format({
+        "border": 2, "bottom": 2, "top": 2, "left": 2, "right": 2
+    })
 
-        # === FORMATO GENERAL ===
-        # Cabeceras
-        worksheet.set_row(0, None, fmt_header)
+    # === FORMATO GENERAL ===
+    worksheet.set_row(0, None, fmt_header)
 
-        # Domingos (busca "/dom" en la col A)
-        last_data_row = len(tabla)
-        worksheet.conditional_format(
-            1, 0, last_data_row-1, len(tabla.columns)-1,
-            {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
-        )
+    last_data_row = len(tabla)
+    last_col = len(tabla.columns) - 1
 
-        # Fila total
-        worksheet.set_row(last_data_row, None, fmt_total)
+    # Domingos (busca "/dom" en la col A)
+    worksheet.conditional_format(
+        1, 0, last_data_row-1, last_col,
+        {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
+    )
 
-        # Columna T. Dia en negrita
-        if "T. Dia" in tabla.columns:
-            col_idx = tabla.columns.get_loc("T. Dia")
-            worksheet.set_column(col_idx, col_idx, None, fmt_bold)
+    # Fila total
+    worksheet.set_row(last_data_row, None, fmt_total)
 
-        # Ajuste ancho + formato numérico
-        for i, col in enumerate(tabla.columns):
-            col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-            if col != "Fecha":
-                worksheet.set_column(i, i, col_width, fmt_num_flex)
-            else:
-                worksheet.set_column(i, i, col_width, fmt_header)
+    # Columna T. Dia en negrita
+    if "T. Dia" in tabla.columns:
+        col_idx = tabla.columns.get_loc("T. Dia")
+        worksheet.set_column(col_idx, col_idx, None, fmt_bold)
 
-        # === BORDE EXTERIOR GRUESO ===
-        # Determinar última fila y columna
-        last_row = len(tabla)
-        last_col = len(tabla.columns) - 1
-        # Aplicar borde exterior (izq, der, sup, inf)
-        worksheet.conditional_format(
-            0, 0, last_row, last_col,
-            {"type": "no_errors", "format": fmt_borde_exterior}
-        )
+    # Ajuste ancho + formato numérico
+    for i, col in enumerate(tabla.columns):
+        col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
+        if col != "Fecha":
+            worksheet.set_column(i, i, col_width, fmt_num_flex)
+        else:
+            worksheet.set_column(i, i, col_width, fmt_header)
+
+    # === BORDE EXTERIOR SOLO AL CONTORNO ===
+    # superior
+    worksheet.conditional_format(0, 0, 0, last_col,
+                                 {"type": "no_errors", "format": fmt_borde_exterior})
+    # inferior
+    worksheet.conditional_format(last_data_row, 0, last_data_row, last_col,
+                                 {"type": "no_errors", "format": fmt_borde_exterior})
+    # izquierdo
+    worksheet.conditional_format(0, 0, last_data_row, 0,
+                                 {"type": "no_errors", "format": fmt_borde_exterior})
+    # derecho
+    worksheet.conditional_format(0, last_col, last_data_row, last_col,
+                                 {"type": "no_errors", "format": fmt_borde_exterior})
+
 
     # === BOTONES ===
     st.download_button(
