@@ -122,7 +122,18 @@ else:
         last_col = len(tabla.columns) - 1
 
         # Cabeceras
-        worksheet.set_row(0, None, fmt_header)
+        # Cabecera (re-escrita para evitar que el formato se derrame)
+        for c in range(0, last_col + 1):
+            worksheet.write(0, c, tabla.columns[c], fmt_header)
+    
+        # Fila "Acum. Rango:" SOLO hasta la última columna utilizada
+        for c in range(0, last_col + 1):
+            val = tabla.iloc[-1, c]
+            worksheet.write(last_row, c, val, fmt_total)
+        # --- FIN DEL BLOQUE NUEVO ---
+    
+        # (Elimina o comenta esta línea ↓)
+        # worksheet.set_row(last_row, None, fmt_total)
 
         # Ancho de columnas automático
         for i, col in enumerate(tabla.columns):
