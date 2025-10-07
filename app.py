@@ -192,7 +192,7 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
     worksheet.conditional_format(0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
 
 # Botones lado a lado
-b1, b2 = st.columns(2)
+b1, b2, _ = st.columns([1, 1, 6])
 with b1:
     st.download_button(
         "💾 Descargar Excel",
@@ -208,7 +208,7 @@ with b2:
         mime="text/csv"
     )
 
-
+    st.markdown("---")
     # ====== GRÁFICAS (Altair) ======
     st.subheader("Gráficas")
 
