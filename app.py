@@ -103,22 +103,29 @@ else:
 
     st.dataframe(sty, use_container_width=True)
 
-    # ====== Descarga en Excel (.xlsx) ======
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
+        # ====== DESCARGAS: Excel y CSV ======
+    output_excel = io.BytesIO()
+    output_csv = io.BytesIO()
 
+    # --- Guardar CSV (sin estilos) ---
+    tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
+
+    # --- Guardar Excel (con bordes) ---
+    with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
+        tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
         workbook  = writer.book
         worksheet = writer.sheets["Tabla Consolidada"]
 
-        # Formatos
-        fmt_header   = workbook.add_format({"bold": True})
-        fmt_sunday   = workbook.add_format({"font_color": "red", "bold": True})
-        fmt_total    = workbook.add_format({"bold": True, "bg_color": "#e6f2ff"})
-        fmt_bold     = workbook.add_format({"bold": True})
-        fmt_num_flex = workbook.add_format({"num_format": "#,##0.##"})  # enteros o máx 2 decimales
+        # === FORMATOS ===
+        fmt_header   = workbook.add_format({"bold": True, "border": 1})
+        fmt_sunday   = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
+        fmt_total    = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
+        fmt_bold     = workbook.add_format({"bold": True, "border": 1})
+        fmt_num_flex = workbook.add_format({"num_format": "#,##0.##", "border": 1})
+        fmt_borde_exterior = workbook.add_format({"border": 6})  # 👈 borde grueso exterior
 
-        # Cabeceras en negrita
+        # === FORMATO GENERAL ===
+        # Cabeceras
         worksheet.set_row(0, None, fmt_header)
 
         # Domingos (busca "/dom" en la col A)
@@ -128,7 +135,7 @@ else:
             {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
         )
 
-        # Resaltar última fila (acumulado)
+        # Fila total
         worksheet.set_row(last_data_row, None, fmt_total)
 
         # Columna T. Dia en negrita
@@ -136,20 +143,39 @@ else:
             col_idx = tabla.columns.get_loc("T. Dia")
             worksheet.set_column(col_idx, col_idx, None, fmt_bold)
 
-        # Ancho + formato numérico para columnas (excepto Fecha)
+        # Ajuste ancho + formato numérico
         for i, col in enumerate(tabla.columns):
             col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
             if col != "Fecha":
                 worksheet.set_column(i, i, col_width, fmt_num_flex)
             else:
-                worksheet.set_column(i, i, col_width)
+                worksheet.set_column(i, i, col_width, fmt_header)
 
+        # === BORDE EXTERIOR GRUESO ===
+        # Determinar última fila y columna
+        last_row = len(tabla)
+        last_col = len(tabla.columns) - 1
+        # Aplicar borde exterior (izq, der, sup, inf)
+        worksheet.conditional_format(
+            0, 0, last_row, last_col,
+            {"type": "no_errors", "format": fmt_borde_exterior}
+        )
+
+    # === BOTONES ===
     st.download_button(
-        "⬇️ Descargar Excel",
-        data=output.getvalue(),
+        "💾 Descargar Excel (con bordes)",
+        data=output_excel.getvalue(),
         file_name="tabla_diaria_items_sedes_TODAS.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    st.download_button(
+        "⬇️ Descargar CSV",
+        data=output_csv.getvalue(),
+        file_name="tabla_diaria_items_sedes_TODAS.csv",
+        mime="text/csv"
+    )
+
 
     # ====== GRÁFICAS (Altair) ======
     st.subheader("Gráficas")
