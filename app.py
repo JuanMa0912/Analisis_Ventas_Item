@@ -103,88 +103,110 @@ else:
 
     st.dataframe(sty, use_container_width=True)
 
-        # ====== DESCARGA EN EXCEL (XLSXWRITER) ======
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
+        # ====== DESCARGAS: Excel y CSV (XLSXWRITER corregido) ======
+output_excel = io.BytesIO()
+output_csv = io.BytesIO()
 
-        workbook  = writer.book
-        worksheet = writer.sheets["Tabla Consolidada"]
+# CSV
+tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
-        fmt_header = workbook.add_format({"bold": True, "border": 1})
-        fmt_sunday = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
-        fmt_total  = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
-        fmt_bold   = workbook.add_format({"bold": True, "border": 1})
-        fmt_num    = workbook.add_format({"num_format": "#,##0.##", "border": 1})
-        fmt_border_ext = workbook.add_format({"border": 2})  # exterior grueso
+with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
+    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
 
-        last_row = len(tabla)
-        last_col = len(tabla.columns) - 1
+    workbook  = writer.book
+    worksheet = writer.sheets["Tabla Consolidada"]
 
-        # Cabeceras
-        # Cabecera (re-escrita para evitar que el formato se derrame)
+    # Formatos
+    fmt_header = workbook.add_format({"bold": True, "border": 1})
+    fmt_sunday = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
+    fmt_total  = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
+    fmt_num    = workbook.add_format({"num_format": "#,##0.##", "border": 1})
+    fmt_text   = workbook.add_format({"border": 1})
+    fmt_bold_num = workbook.add_format({"bold": True, "num_format": "#,##0.##", "border": 1})
+    fmt_border_ext = workbook.add_format({"border": 2})
+
+    last_row = len(tabla)                 # índice de fila en Excel para "Acum. Rango"
+    last_col = len(tabla.columns) - 1
+
+    # Ancho de columnas (SIN formato de columna)
+    for i, col in enumerate(tabla.columns):
+        col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
+        worksheet.set_column(i, i, col_width)  # <— solo ancho
+
+    # Re-escribir cabecera celda por celda (evita que se derrame a la derecha)
+    for c in range(0, last_col + 1):
+        worksheet.write(0, c, tabla.columns[c], fmt_header)
+
+    # Domingos en rojo (solo dentro del rango)
+    worksheet.conditional_format(
+        1, 0, last_row - 1, last_col,
+        {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
+    )
+
+    # Contenido normal con formato numérico/texto (bordes finos internos)
+    # Recorremos las filas de datos (2..last_row) y columnas (0..last_col)
+    for r in range(1, last_row):  # filas de datos (sin incluir fila de acumulado)
         for c in range(0, last_col + 1):
-            worksheet.write(0, c, tabla.columns[c], fmt_header)
-    
-        # Fila "Acum. Rango:" SOLO hasta la última columna utilizada
-        for c in range(0, last_col + 1):
-            val = tabla.iloc[-1, c]
+            val = tabla.iloc[r - 1, c]
+            if c == 0:
+                # Columna Fecha (texto)
+                worksheet.write(r, c, val, fmt_text)
+            else:
+                # Numérico o texto "-"
+                if isinstance(val, (int, float)):
+                    worksheet.write_number(r, c, val, fmt_num)
+                else:
+                    worksheet.write(r, c, val, fmt_text)
+
+    # Fila "Acum. Rango:" SOLO hasta last_col (sin derramar)
+    for c in range(0, last_col + 1):
+        val = tabla.iloc[-1, c]
+        # Si es numérico, respeta num_format, si es texto, aplícalo como texto
+        if c > 0 and isinstance(val, (int, float)):
+            worksheet.write_number(last_row, c, val, fmt_total)
+        else:
             worksheet.write(last_row, c, val, fmt_total)
-        # --- FIN DEL BLOQUE NUEVO ---
-    
-        # (Elimina o comenta esta línea ↓)
-        # worksheet.set_row(last_row, None, fmt_total)
 
-        # Ancho de columnas automático
-        for i, col in enumerate(tabla.columns):
-            col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-            worksheet.set_column(i, i, col_width)
+    # Columna "T. Dia" en negrita — SOLO dentro del rango usado
+    if "T. Dia" in tabla.columns:
+        col_tdia = tabla.columns.get_loc("T. Dia")
+        # Cabecera ya quedó en negrita; formateamos datos + acumulado
+        for r in range(1, last_row + 1):
+            val = tabla.iloc[r - 1, col_tdia] if r <= last_row else None
+            if r == last_row:
+                # ya la escribimos con fmt_total, no tocar
+                continue
+            if isinstance(val, (int, float)):
+                worksheet.write_number(r, col_tdia, val, fmt_bold_num)
+            else:
+                worksheet.write(r, col_tdia, val, fmt_text)
 
-        # Columna "T. Dia" en negrita
-        if "T. Dia" in tabla.columns:
-            col_idx = tabla.columns.get_loc("T. Dia")
-            worksheet.set_column(col_idx, col_idx, None, fmt_bold)
+    # Borde exterior grueso solo contorno
+    # Superior
+    worksheet.conditional_format(0, 0, 0, last_col, {"type": "no_errors", "format": fmt_border_ext})
+    # Inferior
+    worksheet.conditional_format(last_row, 0, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
+    # Izquierda
+    worksheet.conditional_format(0, 0, last_row, 0, {"type": "no_errors", "format": fmt_border_ext})
+    # Derecha
+    worksheet.conditional_format(0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
 
-        # Domingos
-        worksheet.conditional_format(
-            1, 0, last_row - 1, last_col,
-            {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
-        )
-
-        # Fila total
-        worksheet.set_row(last_row, None, fmt_total)
-
-        # Bordes finos internos
-        worksheet.conditional_format(
-            0, 0, last_row, last_col, {"type": "no_errors", "format": fmt_num}
-        )
-
-        # Borde exterior grueso — solo contorno
-        worksheet.conditional_format(
-            0, 0, 0, last_col, {"type": "no_errors", "format": fmt_border_ext})   # superior
-        worksheet.conditional_format(
-            last_row, 0, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})  # inferior
-        worksheet.conditional_format(
-            0, 0, last_row, 0, {"type": "no_errors", "format": fmt_border_ext})  # izquierda
-        worksheet.conditional_format(
-            0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})  # derecha
-
-    # Botones de descarga
-    c1, c2 = st.columns(2)
-    with c1:
-        st.download_button(
-            "💾 Descargar Excel",
-            data=output.getvalue(),
-            file_name="tabla_diaria_items_sedes_TODAS.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    with c2:
-        st.download_button(
-            "⬇️ Descargar CSV",
-            data=tabla.to_csv(index=False).encode("utf-8-sig"),
-            file_name="tabla_diaria_items_sedes_TODAS.csv",
-            mime="text/csv"
-        )
+# Botones lado a lado
+b1, b2 = st.columns(2)
+with b1:
+    st.download_button(
+        "💾 Descargar Excel",
+        data=output_excel.getvalue(),
+        file_name="tabla_diaria_items_sedes_TODAS.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+with b2:
+    st.download_button(
+        "⬇️ Descargar CSV",
+        data=output_csv.getvalue(),
+        file_name="tabla_diaria_items_sedes_TODAS.csv",
+        mime="text/csv"
+    )
 
 
     # ====== GRÁFICAS (Altair) ======
