@@ -154,19 +154,27 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
         else:
             worksheet.set_column(i, i, col_width, fmt_header)
 
-    # === BORDE EXTERIOR SOLO AL CONTORNO ===
-    # superior
-    worksheet.conditional_format(0, 0, 0, last_col,
-                                 {"type": "no_errors", "format": fmt_borde_exterior})
-    # inferior
-    worksheet.conditional_format(last_data_row, 0, last_data_row, last_col,
-                                 {"type": "no_errors", "format": fmt_borde_exterior})
-    # izquierdo
-    worksheet.conditional_format(0, 0, last_data_row, 0,
-                                 {"type": "no_errors", "format": fmt_borde_exterior})
-    # derecho
-    worksheet.conditional_format(0, last_col, last_data_row, last_col,
-                                 {"type": "no_errors", "format": fmt_borde_exterior})
+        # === BORDE EXTERIOR SOLO AL CONTORNO ===
+    # Determinar límites de datos
+    first_row, first_col = 0, 0
+    last_row, last_col = len(tabla), len(tabla.columns) - 1
+
+    # Recorremos las celdas exteriores y aplicamos el borde grueso solo a ellas
+    for col in range(first_col, last_col + 1):
+        # superior
+        worksheet.write(first_row, col, tabla.columns[col], fmt_borde_exterior)
+        # inferior
+        cell_value = tabla.iloc[-1, col] if col < len(tabla.columns) else ""
+        worksheet.write(last_row, col, cell_value, fmt_borde_exterior)
+
+    for row in range(first_row + 1, last_row):
+        # izquierda
+        val_izq = tabla.iloc[row - 1, 0]
+        worksheet.write(row, first_col, val_izq, fmt_borde_exterior)
+        # derecha
+        val_der = tabla.iloc[row - 1, last_col]
+        worksheet.write(row, last_col, val_der, fmt_borde_exterior)
+
 
 
     # === BOTONES ===
