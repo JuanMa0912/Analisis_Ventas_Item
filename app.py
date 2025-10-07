@@ -206,7 +206,7 @@ with b2:
         file_name="tabla_diaria_items_sedes_TODAS.csv",
         mime="text/csv"
     )
-
+b1, b2 = set.columns(2)
 
     # ====== GRÁFICAS (Altair) ======
     st.subheader("Gráficas")
