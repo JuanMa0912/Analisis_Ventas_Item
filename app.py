@@ -103,94 +103,77 @@ else:
 
     st.dataframe(sty, use_container_width=True)
 
-        # ====== DESCARGAS: Excel y CSV ======
-    output_excel = io.BytesIO()
-    output_csv = io.BytesIO()
+        # ====== DESCARGA EN EXCEL (XLSXWRITER) ======
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
 
-    # --- Guardar CSV (sin estilos) ---
-    tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
+        workbook  = writer.book
+        worksheet = writer.sheets["Tabla Consolidada"]
 
-    # --- Guardar Excel (con bordes) ---
-with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
-    workbook  = writer.book
-    worksheet = writer.sheets["Tabla Consolidada"]
+        fmt_header = workbook.add_format({"bold": True, "border": 1})
+        fmt_sunday = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
+        fmt_total  = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
+        fmt_bold   = workbook.add_format({"bold": True, "border": 1})
+        fmt_num    = workbook.add_format({"num_format": "#,##0.##", "border": 1})
+        fmt_border_ext = workbook.add_format({"border": 2})  # exterior grueso
 
-    # === FORMATOS ===
-    fmt_header   = workbook.add_format({"bold": True, "border": 1})
-    fmt_sunday   = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
-    fmt_total    = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
-    fmt_bold     = workbook.add_format({"bold": True, "border": 1})
-    fmt_num_flex = workbook.add_format({"num_format": "#,##0.##", "border": 1})
-    fmt_borde_exterior = workbook.add_format({
-        "border": 2, "bottom": 2, "top": 2, "left": 2, "right": 2
-    })
+        last_row = len(tabla)
+        last_col = len(tabla.columns) - 1
 
-    # === FORMATO GENERAL ===
-    worksheet.set_row(0, None, fmt_header)
+        # Cabeceras
+        worksheet.set_row(0, None, fmt_header)
 
-    last_data_row = len(tabla)
-    last_col = len(tabla.columns) - 1
+        # Ancho de columnas automático
+        for i, col in enumerate(tabla.columns):
+            col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
+            worksheet.set_column(i, i, col_width)
 
-    # Domingos (busca "/dom" en la col A)
-    worksheet.conditional_format(
-        1, 0, last_data_row-1, last_col,
-        {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
-    )
+        # Columna "T. Dia" en negrita
+        if "T. Dia" in tabla.columns:
+            col_idx = tabla.columns.get_loc("T. Dia")
+            worksheet.set_column(col_idx, col_idx, None, fmt_bold)
 
-    # Fila total
-    worksheet.set_row(last_data_row, None, fmt_total)
+        # Domingos
+        worksheet.conditional_format(
+            1, 0, last_row - 1, last_col,
+            {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
+        )
 
-    # Columna T. Dia en negrita
-    if "T. Dia" in tabla.columns:
-        col_idx = tabla.columns.get_loc("T. Dia")
-        worksheet.set_column(col_idx, col_idx, None, fmt_bold)
+        # Fila total
+        worksheet.set_row(last_row, None, fmt_total)
 
-    # Ajuste ancho + formato numérico
-    for i, col in enumerate(tabla.columns):
-        col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-        if col != "Fecha":
-            worksheet.set_column(i, i, col_width, fmt_num_flex)
-        else:
-            worksheet.set_column(i, i, col_width, fmt_header)
+        # Bordes finos internos
+        worksheet.conditional_format(
+            0, 0, last_row, last_col, {"type": "no_errors", "format": fmt_num}
+        )
 
-        # === BORDE EXTERIOR SOLO AL CONTORNO ===
-    # Determinar límites de datos
-    first_row, first_col = 0, 0
-    last_row, last_col = len(tabla), len(tabla.columns) - 1
+        # Borde exterior grueso — solo contorno
+        worksheet.conditional_format(
+            0, 0, 0, last_col, {"type": "no_errors", "format": fmt_border_ext})   # superior
+        worksheet.conditional_format(
+            last_row, 0, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})  # inferior
+        worksheet.conditional_format(
+            0, 0, last_row, 0, {"type": "no_errors", "format": fmt_border_ext})  # izquierda
+        worksheet.conditional_format(
+            0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})  # derecha
 
-    # Recorremos las celdas exteriores y aplicamos el borde grueso solo a ellas
-    for col in range(first_col, last_col + 1):
-        # superior
-        worksheet.write(first_row, col, tabla.columns[col], fmt_borde_exterior)
-        # inferior
-        cell_value = tabla.iloc[-1, col] if col < len(tabla.columns) else ""
-        worksheet.write(last_row, col, cell_value, fmt_borde_exterior)
-
-    for row in range(first_row + 1, last_row):
-        # izquierda
-        val_izq = tabla.iloc[row - 1, 0]
-        worksheet.write(row, first_col, val_izq, fmt_borde_exterior)
-        # derecha
-        val_der = tabla.iloc[row - 1, last_col]
-        worksheet.write(row, last_col, val_der, fmt_borde_exterior)
-
-
-
-    # === BOTONES ===
-    st.download_button(
-        "💾 Descargar Excel (con bordes)",
-        data=output_excel.getvalue(),
-        file_name="tabla_diaria_items_sedes_TODAS.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    st.download_button(
-        "⬇️ Descargar CSV",
-        data=output_csv.getvalue(),
-        file_name="tabla_diaria_items_sedes_TODAS.csv",
-        mime="text/csv"
-    )
+    # Botones de descarga
+    c1, c2 = st.columns(2)
+    with c1:
+        st.download_button(
+            "💾 Descargar Excel",
+            data=output.getvalue(),
+            file_name="tabla_diaria_items_sedes_TODAS.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    with c2:
+        st.download_button(
+            "⬇️ Descargar CSV",
+            data=tabla.to_csv(index=False).encode("utf-8-sig"),
+            file_name="tabla_diaria_items_sedes_TODAS.csv",
+            mime="text/csv"
+        )
 
 
     # ====== GRÁFICAS (Altair) ======
