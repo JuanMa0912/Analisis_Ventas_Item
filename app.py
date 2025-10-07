@@ -208,7 +208,7 @@ with b2:
         mime="text/csv"
     )
 
-    st.markdown("---")
+    #st.markdown("---")
     # ====== GRÁFICAS (Altair) ======
     st.subheader("Gráficas")
 
