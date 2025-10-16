@@ -53,7 +53,7 @@ except Exception as e:
     st.error(f"No se pudo procesar el CSV: {e}")
     st.stop()
 
-# ====== Selector de empresa (NUEVO) ======
+# ====== Selector de empresas (NUEVO: multi-selección) ======
 empresas_disponibles = df["empresa_norm"].dropna().unique().tolist()
 if not empresas_disponibles:
     st.error("No se encontraron empresas válidas en el archivo.")
@@ -65,24 +65,36 @@ label_to_value = dict(zip(labels, empresas_disponibles))
 
 c_top1, c_top2 = st.columns([2, 1])
 with c_top1:
-    empresa_label = st.selectbox("Empresa", labels, index=0)
-empresa_sel = label_to_value[empresa_label]
+    empresas_label_sel = st.multiselect(
+        "Empresas",
+        options=labels,
+        default=labels[:1] if labels else [],
+        help="Puedes elegir una o varias empresas (p. ej., Mercamio + Mercatodo).",
+        max_selections=len(labels) if labels else 1,
+    )
 
-# Filtramos TODO por la empresa elegida
-df_emp = df[df["empresa_norm"] == empresa_sel].copy()
-if df_emp.empty:
-    st.warning("No hay datos para la empresa seleccionada.")
+if not empresas_label_sel:
+    st.info("Selecciona al menos una empresa.")
     st.stop()
 
-# Rango de fechas por defecto según la empresa filtrada
+empresas_sel = [label_to_value[l] for l in empresas_label_sel]
+empresas_caption = " + ".join(empresas_label_sel)
+
+# Filtramos TODO por las empresas elegidas
+df_emp = df[df["empresa_norm"].isin(empresas_sel)].copy()
+if df_emp.empty:
+    st.warning("No hay datos para las empresas seleccionadas.")
+    st.stop()
+
+# Rango de fechas por defecto según el subset filtrado
 if df_emp["fecha"].notna().any():
     min_d = df_emp["fecha"].min().date()
     max_d = df_emp["fecha"].max().date()
 else:
-    st.error("No hay fechas válidas en el archivo para la empresa seleccionada.")
+    st.error("No hay fechas válidas en el archivo para las empresas seleccionadas.")
     st.stop()
 
-# ====== Filtros: fechas, límite e ítems (sobre la empresa) ======
+# ====== Filtros: fechas, límite e ítems (sobre las empresas) ======
 c1, c2, c3 = st.columns([2, 1, 1])
 with c1:
     date_range = st.date_input(
@@ -127,7 +139,7 @@ df_f = df_f[ok]
 tabla = build_daily_table_all_range(df_f, start, end)
 
 st.subheader(
-    f"Tabla diaria consolidada (unidades) — {DISPLAY_EMPRESA.get(empresa_sel, empresa_sel.title())}"
+    f"Tabla diaria consolidada (unidades) — {empresas_caption}"
 )
 if tabla.empty:
     st.warning("No se encontraron registros para los filtros aplicados.")
@@ -135,7 +147,7 @@ else:
     # Estilos en pantalla (Streamlit)
     def style_headers(df_styler):
         return df_styler.set_table_styles(
-            [{"selector": "th", "props": [("font-weight", "bold")]}]
+            [{"selector": "th", "props": [("font-weight", "bold")] }]
         )
 
     def style_totals(row):
@@ -143,7 +155,7 @@ else:
         return ["font-weight: bold; background-color: #e6f2ff" if is_total else "" for _ in row]
 
     def style_sundays(row):
-        is_sunday = isinstance(row["Fecha"], str) and ("/dom" in row["Fecha"])
+        is_sunday = isinstance(row["Fecha"], str) and ("/dom" in row["Fecha"]) 
         if row.name == len(tabla) - 1:
             return ["" for _ in row]
         return ["color: red; font-weight: bold" if is_sunday else "" for _ in row]
@@ -163,8 +175,9 @@ output_csv = io.BytesIO()
 # CSV
 tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
-excel_name = f"tabla_diaria_items_{empresa_sel}_sedes.xlsx"
-csv_name = f"tabla_diaria_items_{empresa_sel}_sedes.csv"
+tag_empresas = "_".join([e for e in empresas_sel]) if len(empresas_sel) > 1 else empresas_sel[0]
+excel_name = f"tabla_diaria_items_{tag_empresas}_sedes.xlsx"
+csv_name  = f"tabla_diaria_items_{tag_empresas}_sedes.csv"
 
 with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
     tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
@@ -258,7 +271,7 @@ st.markdown("---")
 
 # ====== GRÁFICAS (Altair) ======
 st.subheader(
-    f"Gráficas — {DISPLAY_EMPRESA.get(empresa_sel, empresa_sel.title())}"
+    f"Gráficas — {empresas_caption}"
 )
 
 pivot_num = build_numeric_pivot_range(df_f, start, end)
@@ -373,4 +386,3 @@ else:
         if stack_chart is not None:
             st.altair_chart(stack_chart, use_container_width=True)
         st.altair_chart(acum_chart, use_container_width=True)
-
