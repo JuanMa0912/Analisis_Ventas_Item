@@ -1,4 +1,6 @@
-import os, sys, io
+# app.py — versión con multiselector de empresas + optimizaciones
+
+import os, sys, io, re
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -14,7 +16,7 @@ from utils import (
 
 st.set_page_config(page_title="Ventas x Ítem — Tabla y Gráficas", layout="wide")
 st.title("📊 Ventas por Ítem(s) x Sedes — Tabla única + Gráficas")
-st.caption("Rango de fechas, todas las sedes (Mercamio → Mercatodo → Bogotá), guiones en lugar de 0, totales resaltados, domingos en rojo y varias gráficas.")
+st.caption("Rango de fechas, filtro por empresas, todas las sedes por empresa, guiones en lugar de 0, totales resaltados, domingos en rojo y varias gráficas.")
 
 with st.expander("Formato esperado del CSV", expanded=False):
     st.markdown("`empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum`")
@@ -24,14 +26,50 @@ if uploaded is None:
     st.info("Sube un archivo CSV para comenzar.")
     st.stop()
 
-# ====== Carga y preparación ======
+# ====== Carga y preparación (cacheada) ======
+@st.cache_data(show_spinner=False)
+def _load_df(file_bytes: bytes) -> pd.DataFrame:
+    raw = pd.read_csv(io.BytesIO(file_bytes))
+    return prepare_dataframe(raw)
+
 try:
-    raw = pd.read_csv(uploaded)
-    df = prepare_dataframe(raw)
+    df = _load_df(uploaded.getvalue())
 except Exception as e:
     st.error(f"No se pudo procesar el CSV: {e}")
     st.stop()
 
+# ====== NUEVO: filtro de empresas ======
+# Usamos la columna normalizada para evitar tildes/alias y mostramos etiquetas legibles.
+EMPRESA_LABELS = {
+    "mercamio": "MERCAMIO",
+    "mtodo": "MERCATODO",
+    "bogota": "BOGOTÁ",
+}
+empresas_disponibles = sorted(df["empresa_norm"].dropna().unique().tolist())
+labels = [EMPRESA_LABELS.get(x, x.upper()) for x in empresas_disponibles]
+
+st.subheader("Filtros")
+empresas_sel_labels = st.multiselect(
+    "Empresas",
+    options=labels,
+    default=labels,  # por defecto todas
+    help="Selecciona una o varias empresas."
+)
+# Mapa inverso label->clave normalizada
+label_to_key = {EMPRESA_LABELS.get(k, k.upper()): k for k in empresas_disponibles}
+empresas_sel = [label_to_key[l] for l in empresas_sel_labels] if empresas_sel_labels else []
+
+if not empresas_sel:
+    st.warning("Selecciona al menos una empresa para continuar.")
+    st.stop()
+
+# Filtramos por empresa antes de todo lo demás
+df = df[df["empresa_norm"].isin(empresas_sel)].copy()
+if df.empty:
+    st.warning("No hay datos para las empresas seleccionadas.")
+    st.stop()
+
+# ====== Rango de fechas basado en las empresas filtradas ======
 if df["fecha"].notna().any():
     min_d = df["fecha"].min().date()
     max_d = df["fecha"].max().date()
@@ -45,18 +83,19 @@ with c1:
 with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
 
-items_all = items_display_list(df)
+# ====== Ítems disponibles (ya restringidos por empresa y fechas para ayudar al usuario) ======
+start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+mask_emp_fec = (df["fecha"] >= start) & (df["fecha"] <= end)
+df_emp_fec = df.loc[mask_emp_fec].copy()
+
+items_all = items_display_list(df_emp_fec if not df_emp_fec.empty else df)
 items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit)
 if not items_sel:
     st.info("Selecciona al menos un ítem.")
     st.stop()
 
-start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-
-# Filtrar por rango + ítems
-mask = (df["fecha"] >= start) & (df["fecha"] <= end)
-df_f = df.loc[mask].copy()
-
+# ====== Filtrado final por ítems ======
+df_f = df_emp_fec.copy()
 ids = set()
 descr_needles = []
 for it in items_sel:
@@ -72,7 +111,7 @@ ok = pd.Series(False, index=df_f.index)
 if ids:
     ok = ok | df_f["id_item"].astype(str).isin(ids)
 if descr_needles:
-    pat = "|".join([pd.re.escape(t) for t in descr_needles])
+    pat = "|".join([re.escape(t) for t in descr_needles])  # bugfix: usar re.escape (antes estaba pd.re)
     ok = ok | df_f["descripcion"].str.lower().str.contains(pat, na=False)
 df_f = df_f[ok]
 
@@ -99,11 +138,11 @@ else:
     if "T. Dia" in tabla.columns:
         sty = sty.set_properties(subset=['T. Dia'], **{'font-weight': 'bold'})
     sty = style_headers(sty)
-    sty = sty.format(precision=2, na_rep="-")  # enteros como enteros / decimales hasta 2
+    sty = sty.format(precision=2, na_rep="-")
 
     st.dataframe(sty, use_container_width=True)
 
-        # ====== DESCARGAS: Excel y CSV (XLSXWRITER corregido) ======
+# ====== DESCARGAS: Excel y CSV ======
 output_excel = io.BytesIO()
 output_csv = io.BytesIO()
 
@@ -125,74 +164,62 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
     fmt_bold_num = workbook.add_format({"bold": True, "num_format": "#,##0.##", "border": 1})
     fmt_border_ext = workbook.add_format({"border": 2})
 
-    last_row = len(tabla)                 # índice de fila en Excel para "Acum. Rango"
+    last_row = len(tabla)                 # incluye la fila "Acum. Rango"
     last_col = len(tabla.columns) - 1
 
-    # Ancho de columnas (SIN formato de columna)
+    # Ancho de columnas
     for i, col in enumerate(tabla.columns):
         col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-        worksheet.set_column(i, i, col_width)  # <— solo ancho
+        worksheet.set_column(i, i, col_width)
 
-    # Re-escribir cabecera celda por celda (evita que se derrame a la derecha)
+    # Re-escribir cabecera para asegurar formato
     for c in range(0, last_col + 1):
         worksheet.write(0, c, tabla.columns[c], fmt_header)
 
-    # Domingos en rojo (solo dentro del rango)
+    # Domingos en rojo
     worksheet.conditional_format(
         1, 0, last_row - 1, last_col,
         {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
     )
 
-    # Contenido normal con formato numérico/texto (bordes finos internos)
-    # Recorremos las filas de datos (2..last_row) y columnas (0..last_col)
-    for r in range(1, last_row):  # filas de datos (sin incluir fila de acumulado)
+    # Cuerpo (sin incluir la fila de acumulado, que se formatea abajo)
+    for r in range(1, last_row):
         for c in range(0, last_col + 1):
             val = tabla.iloc[r - 1, c]
             if c == 0:
-                # Columna Fecha (texto)
                 worksheet.write(r, c, val, fmt_text)
             else:
-                # Numérico o texto "-"
                 if isinstance(val, (int, float)):
                     worksheet.write_number(r, c, val, fmt_num)
                 else:
                     worksheet.write(r, c, val, fmt_text)
 
-    # Fila "Acum. Rango:" SOLO hasta last_col (sin derramar)
+    # Fila de acumulado (ya existe por to_excel en last_row); reforzamos formato
     for c in range(0, last_col + 1):
         val = tabla.iloc[-1, c]
-        # Si es numérico, respeta num_format, si es texto, aplícalo como texto
         if c > 0 and isinstance(val, (int, float)):
             worksheet.write_number(last_row, c, val, fmt_total)
         else:
             worksheet.write(last_row, c, val, fmt_total)
 
-    # Columna "T. Dia" en negrita — SOLO dentro del rango usado
+    # Columna "T. Dia" en negrita dentro del rango de datos
     if "T. Dia" in tabla.columns:
         col_tdia = tabla.columns.get_loc("T. Dia")
-        # Cabecera ya quedó en negrita; formateamos datos + acumulado
-        for r in range(1, last_row + 1):
-            val = tabla.iloc[r - 1, col_tdia] if r <= last_row else None
-            if r == last_row:
-                # ya la escribimos con fmt_total, no tocar
-                continue
+        for r in range(1, last_row):
+            val = tabla.iloc[r - 1, col_tdia]
             if isinstance(val, (int, float)):
                 worksheet.write_number(r, col_tdia, val, fmt_bold_num)
             else:
                 worksheet.write(r, col_tdia, val, fmt_text)
 
-    # Borde exterior grueso solo contorno
-    # Superior
-    worksheet.conditional_format(0, 0, 0, last_col, {"type": "no_errors", "format": fmt_border_ext})
-    # Inferior
-    worksheet.conditional_format(last_row, 0, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
-    # Izquierda
-    worksheet.conditional_format(0, 0, last_row, 0, {"type": "no_errors", "format": fmt_border_ext})
-    # Derecha
-    worksheet.conditional_format(0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
+    # Borde exterior grueso (contorno)
+    worksheet.conditional_format(0, 0, 0, last_col, {"type": "no_errors", "format": fmt_border_ext})      # Superior
+    worksheet.conditional_format(last_row, 0, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})  # Inferior
+    worksheet.conditional_format(0, 0, last_row, 0, {"type": "no_errors", "format": fmt_border_ext})      # Izquierda
+    worksheet.conditional_format(0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})  # Derecha
 
 # === BOTONES (lado a lado, alineados a la izquierda) ===
-b1, b2, _ = st.columns([1, 1, 6])  # los dos primeros para botones, el tercero es "espaciador"
+b1, b2, _ = st.columns([1, 1, 6])
 with b1:
     st.download_button(
         "💾 Descargar Excel",
