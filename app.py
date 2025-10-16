@@ -15,8 +15,7 @@ from utils import (
 )
 
 st.set_page_config(page_title="Ventas x Ítem — Tabla y Gráficas", layout="wide")
-st.title("📊 Ventas por Ítem(s) x Sedes — Tabla única + Gráficas")
-st.caption("Rango de fechas, filtro por empresas, todas las sedes por empresa, guiones en lugar de 0, totales resaltados, domingos en rojo y varias gráficas.")
+st.title("📊 Ventas por Ítem(s) x Sedes")
 
 with st.expander("Formato esperado del CSV", expanded=False):
     st.markdown("`empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum`")
