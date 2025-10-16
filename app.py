@@ -16,9 +16,8 @@ from utils import (
 
 st.set_page_config(page_title="Ventas x Ítem — Tabla y Gráficas", layout="wide")
 st.title("📊 Ventas por Ítem(s) x Sedes")
+st.caption("Rango de fechas, filtro por empresas, todas las sedes por empresa, guiones en lugar de 0, totales resaltados, domingos en rojo y varias gráficas.")
 
-with st.expander("Formato esperado del CSV", expanded=False):
-    st.markdown("`empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum`")
 
 uploaded = st.file_uploader("📥 Cargar CSV", type=["csv"])
 if uploaded is None:
