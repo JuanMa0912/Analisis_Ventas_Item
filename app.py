@@ -29,10 +29,18 @@ def sort_empresas(values):
     others = [e for e in values if e not in present]
     return present + sorted(others)
 
+# =============================
+# Estado global de UI
+# =============================
+if "empresas_locked" not in st.session_state:
+    st.session_state.empresas_locked = False
+if "empresas_label_sel" not in st.session_state:
+    st.session_state.empresas_label_sel = []
+
 st.set_page_config(page_title="Ventas x Ítem — Tabla y Gráficas", layout="wide")
 st.title("📊 Ventas por Ítem(s) x Sedes — Tabla única + Gráficas")
 st.caption(
-    "Rango de fechas, selección de empresa, guiones en lugar de 0, totales resaltados, domingos en rojo y varias gráficas."
+    "Rango de fechas, selección de empresa (bloqueable), guiones en lugar de 0, totales, domingos en rojo y varias gráficas."
 )
 
 with st.expander("Formato esperado del CSV", expanded=False):
@@ -53,7 +61,7 @@ except Exception as e:
     st.error(f"No se pudo procesar el CSV: {e}")
     st.stop()
 
-# ====== Selector de empresas (NUEVO: multi-selección) ======
+# ====== Selector de empresas (NUEVO: multi-selección con bloqueo) ======
 empresas_disponibles = df["empresa_norm"].dropna().unique().tolist()
 if not empresas_disponibles:
     st.error("No se encontraron empresas válidas en el archivo.")
@@ -63,16 +71,33 @@ empresas_disponibles = sort_empresas(empresas_disponibles)
 labels = [DISPLAY_EMPRESA.get(e, e.title()) for e in empresas_disponibles]
 label_to_value = dict(zip(labels, empresas_disponibles))
 
-c_top1, c_top2 = st.columns([2, 1])
-with c_top1:
-    empresas_label_sel = st.multiselect(
-        "Empresas",
-        options=labels,
-        default=labels[:1] if labels else [],
-        help="Puedes elegir una o varias empresas (p. ej., Mercamio + Mercatodo).",
-        max_selections=len(labels) if labels else 1,
-    )
+empresas_container = st.container()
+with empresas_container:
+    if not st.session_state.empresas_locked:
+        with st.form("form_empresas", clear_on_submit=False):
+            empresas_label_sel = st.multiselect(
+                "Empresas",
+                options=labels,
+                default=(st.session_state.empresas_label_sel or labels[:1]),
+                help="Elige una o varias (p. ej., Mercamio + Mercatodo). Luego pulsa 'Aplicar' para actualizar solo los datos.",
+                max_selections=len(labels) if labels else 1,
+            )
+            aplicar = st.form_submit_button("✅ Aplicar empresas")
+            if aplicar:
+                st.session_state.empresas_label_sel = empresas_label_sel
+                st.session_state.empresas_locked = True
+    else:
+        empresas_label_sel = st.session_state.empresas_label_sel
+        st.success("Empresas: " + (" + ".join(empresas_label_sel) if empresas_label_sel else "(ninguna)"))
+        if st.button("✏️ Cambiar empresas"):
+            st.session_state.empresas_locked = False
+            st.stop()
 
+# Si sigue sin selección (primer render), usa 1ra por defecto
+if not st.session_state.empresas_label_sel and empresas_disponibles:
+    st.session_state.empresas_label_sel = [labels[0]]
+
+empresas_label_sel = st.session_state.empresas_label_sel
 if not empresas_label_sel:
     st.info("Selecciona al menos una empresa.")
     st.stop()
@@ -104,10 +129,12 @@ with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
 
 items_all = items_display_list(df_emp)
-items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit)
+items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit, help="Si no eliges ninguno, se tomará el top inicial automáticamente")
+# Comportamiento: si no hay selección, NO frenamos la app; usamos todos (o top 'limit')
 if not items_sel:
-    st.info("Selecciona al menos un ítem.")
-    st.stop()
+    # Top por frecuencia dentro del rango/empresa (preliminar, antes de filtrar por fecha)
+    top_default = items_all[:limit] if len(items_all) > limit else items_all
+    items_sel = top_default
 
 start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
 
@@ -140,6 +167,7 @@ tabla = build_daily_table_all_range(df_f, start, end)
 
 st.subheader(
     f"Tabla diaria consolidada (unidades) — {empresas_caption}"
+) — {empresas_caption}"
 )
 if tabla.empty:
     st.warning("No se encontraron registros para los filtros aplicados.")
