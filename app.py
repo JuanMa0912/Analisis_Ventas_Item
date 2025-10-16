@@ -166,9 +166,7 @@ df_f = df_f[ok]
 tabla = build_daily_table_all_range(df_f, start, end)
 
 st.subheader(
-    f"Tabla diaria consolidada (unidades) — {empresas_caption}"
-) — {empresas_caption}"
-)
+    f"Tabla diaria consolidada (unidades) - {empresas_caption}")
 if tabla.empty:
     st.warning("No se encontraron registros para los filtros aplicados.")
 else:
