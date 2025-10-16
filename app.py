@@ -1,4 +1,4 @@
-# app.py — versión con multiselector de empresas + optimizaciones
+# app.py — versión con multiselector de empresas + título dinámico según ítems (1ra palabra, orden de selección)
 
 import os, sys, io, re
 import streamlit as st
@@ -38,12 +38,11 @@ except Exception as e:
     st.error(f"No se pudo procesar el CSV: {e}")
     st.stop()
 
-# ====== NUEVO: filtro de empresas ======
-# Usamos la columna normalizada para evitar tildes/alias y mostramos etiquetas legibles.
+# ====== Filtro de empresas ======
 EMPRESA_LABELS = {
     "mercamio": "MERCAMIO",
     "mtodo": "MERCATODO",
-    "bogota": "BOGOTA",
+    "bogota": "BOGOTÁ",
 }
 empresas_disponibles = sorted(df["empresa_norm"].dropna().unique().tolist())
 labels = [EMPRESA_LABELS.get(x, x.upper()) for x in empresas_disponibles]
@@ -83,7 +82,6 @@ with c1:
 with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
 
-
 # ====== Ítems disponibles (ya restringidos por empresa y fechas para ayudar al usuario) ======
 start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
 mask_emp_fec = (df["fecha"] >= start) & (df["fecha"] <= end)
@@ -92,8 +90,41 @@ df_emp_fec = df.loc[mask_emp_fec].copy()
 items_all = items_display_list(df_emp_fec if not df_emp_fec.empty else df)
 items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit)
 if not items_sel:
+    # Título por defecto si no hay ítems aún
+    st.subheader("Tabla diaria consolidada (unidades)")
     st.info("Selecciona al menos un ítem.")
     st.stop()
+
+# ====== TÍTULO DINÁMICO de la tabla según ítems (1ra palabra, en orden real de selección) =====
+if "items_order" not in st.session_state:
+    st.session_state["items_order"] = []
+
+current = items_sel[:]  # selección actual del multiselect
+
+# agrega nuevos ítems en el orden en que fueron clicados
+for it in current:
+    if it not in st.session_state["items_order"]:
+        st.session_state["items_order"].append(it)
+
+# elimina los que ya no están seleccionados
+st.session_state["items_order"] = [it for it in st.session_state["items_order"] if it in current]
+
+def _first_word_from_option(opt: str) -> str:
+    # si viene "123 - Descripción del producto", tomar solo la DESCRIPCIÓN
+    desc = opt.split(" - ", 1)[1] if " - " in opt else opt
+    desc = desc.strip()
+    # primera palabra alfanumérica (unicode)
+    m = re.search(r"\w+", desc, flags=re.UNICODE)
+    if m:
+        return m.group(0)
+    parts = desc.split()
+    return parts[0] if parts else ""
+
+if st.session_state["items_order"]:
+    first_words = [_first_word_from_option(s) for s in st.session_state["items_order"]]
+    titulo_tabla = "Tabla diaria consolidada — " + " · ".join(first_words) + " (unidades)"
+else:
+    titulo_tabla = "Tabla diaria consolidada (unidades)"
 
 # ====== Filtrado final por ítems ======
 df_f = df_emp_fec.copy()
@@ -112,14 +143,14 @@ ok = pd.Series(False, index=df_f.index)
 if ids:
     ok = ok | df_f["id_item"].astype(str).isin(ids)
 if descr_needles:
-    pat = "|".join([re.escape(t) for t in descr_needles])  # bugfix: usar re.escape (antes estaba pd.re)
+    pat = "|".join([re.escape(t) for t in descr_needles])  # usar re.escape
     ok = ok | df_f["descripcion"].str.lower().str.contains(pat, na=False)
 df_f = df_f[ok]
 
 # ====== Tabla principal ======
 tabla = build_daily_table_all_range(df_f, start, end)
 
-st.subheader("Tabla diaria consolidada (unidades)")
+st.subheader(titulo_tabla)
 
 if tabla.empty:
     st.warning("No se encontraron registros para los filtros aplicados.")
@@ -348,3 +379,4 @@ else:
     with colB:
         st.altair_chart(stack_chart, use_container_width=True)
         st.altair_chart(acum_chart, use_container_width=True)
+
