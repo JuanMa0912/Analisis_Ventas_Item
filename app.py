@@ -113,12 +113,12 @@ def _first_word_from_option(opt: str) -> str:
     # si viene "123 - Descripción del producto", tomar solo la DESCRIPCIÓN
     desc = opt.split(" - ", 1)[1] if " - " in opt else opt
     desc = desc.strip()
+    if not desc:
+        return ""
     # primera palabra alfanumérica (unicode)
-    m = re.search(r"\w+", desc, flags=re.UNICODE)
-    if m:
-        return m.group(0)
-    parts = desc.split()
-    return parts[0] if parts else ""
+    desc = re.sub(r"[_\s]+", " ", desc)
+    primera = desc.split()[0]
+    return primera.strip()
 
 if st.session_state["items_order"]:
     first_words = [_first_word_from_option(s) for s in st.session_state["items_order"]]
