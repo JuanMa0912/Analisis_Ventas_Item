@@ -215,8 +215,8 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
 
     # ==== Formatos ====
     fmt_titulo = workbook.add_format({
-        "bold": True, "font_color": "black",
-        "font_size": 12, "align": "center", "valign": "vcenter"
+        "bold": True, "font_color": "red",
+        "font_size": 14, "align": "center", "valign": "vcenter"
     })
     fmt_subtitulo = workbook.add_format({
         "font_color": "black", "font_size": 11, "align": "center"
