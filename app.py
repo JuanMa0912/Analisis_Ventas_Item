@@ -190,7 +190,7 @@ output_csv = io.BytesIO()
 tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
 with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada", startrow=7)
+    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada", startrow=5, startcolumn=C)
 
     workbook  = writer.book
     worksheet = writer.sheets["Tabla Consolidada"]
@@ -222,7 +222,7 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
     for c in range(0, last_col + 1):
         worksheet.write(7, c, tabla.columns[c], fmt_header)
 
-    last_row = len(tabla) + 5  # porque empezamos en la fila 8 (índice 7)
+    last_row = len(tabla) + 7  # porque empezamos en la fila 8 (índice 7)
 
     # === Domingos en rojo ===
     worksheet.conditional_format(
