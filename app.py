@@ -84,17 +84,6 @@ with c2:
     limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
 
 
-# === Construcción del título dinámico con 1ra palabra de cada ítem ===
-def _first_word_from_option(opt: str) -> str:
-    # Si el formato es "12345 - Descripción del producto", tomar solo la parte de la descripción
-    desc = opt.split(" - ", 1)[1] if " - " in opt else opt
-    desc = desc.strip()
-    return desc.split()[0] if desc else ""
-
-first_words = [_first_word_from_option(s) for s in items_sel]
-titulo_tabla = "Tabla diaria consolidada — " + " · ".join(first_words) + " (unidades)"
-
-
 # ====== Ítems disponibles (ya restringidos por empresa y fechas para ayudar al usuario) ======
 start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
 mask_emp_fec = (df["fecha"] >= start) & (df["fecha"] <= end)
@@ -130,8 +119,7 @@ df_f = df_f[ok]
 # ====== Tabla principal ======
 tabla = build_daily_table_all_range(df_f, start, end)
 
-#st.subheader("Tabla diaria consolidada (unidades)") SE CAMBIA POR
-st.subheader(titulo_tabla)
+st.subheader("Tabla diaria consolidada (unidades)")
 
 if tabla.empty:
     st.warning("No se encontraron registros para los filtros aplicados.")
