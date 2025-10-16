@@ -190,7 +190,7 @@ output_csv = io.BytesIO()
 tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
 with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada", startrow=5, startcolumn=C)
+    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada", startrow=5, startcolumn=3)
 
     workbook  = writer.book
     worksheet = writer.sheets["Tabla Consolidada"]
