@@ -211,7 +211,7 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
     # === Título dinámico centrado ===
     last_col = len(tabla.columns) - 1
     titulo_excel = titulo_tabla.replace("Tabla diaria consolidada — ", "").replace("(unidades)", "").strip()
-    worksheet.merge_range(1, 0, 1, last_col, f"TÍTULO DE LA TABLA — {titulo_excel.upper()}", fmt_titulo)
+    worksheet.merge_range(1, 0, 1, last_col, f"TABLA CONSOLIDADA — {titulo_excel.upper()}", fmt_titulo)
 
     # === Ajustes de ancho de columnas ===
     for i, col in enumerate(tabla.columns):
@@ -222,7 +222,7 @@ with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
     for c in range(0, last_col + 1):
         worksheet.write(7, c, tabla.columns[c], fmt_header)
 
-    last_row = len(tabla) + 7  # porque empezamos en la fila 8 (índice 7)
+    last_row = len(tabla) + 5  # porque empezamos en la fila 8 (índice 7)
 
     # === Domingos en rojo ===
     worksheet.conditional_format(
