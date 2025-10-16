@@ -24,6 +24,20 @@ if uploaded is None:
     st.info("Sube un archivo CSV para comenzar.")
     st.stop()
 
+# === Selector de empresa (filtra el dataframe antes de fechas/ítems/tablas) ===
+emp_col = "empresa_norm" if "empresa_norm" in df.columns else "empresa"
+emp_options = sorted(df[emp_col].dropna().unique().tolist())
+if not emp_options:
+    st.error("No se encontraron empresas en el archivo.")
+    st.stop()
+
+empresa_sel = st.selectbox("Empresa", emp_options, index=0, help="Elige la empresa para filtrar la tabla")
+df = df[df[emp_col] == empresa_sel].copy()
+if df.empty:
+    st.warning("No hay datos para la empresa seleccionada.")
+    st.stop()
+
+
 # ====== Carga y preparación ======
 try:
     raw = pd.read_csv(uploaded)
