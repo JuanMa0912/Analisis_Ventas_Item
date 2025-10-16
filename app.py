@@ -189,80 +189,115 @@ output_csv = io.BytesIO()
 # CSV
 tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
+from xlsxwriter.utility import xl_rowcol_to_cell
+
 with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada", startrow=5)
+    # ====== Posición deseada ======
+    START_ROW = 5   # fila 6 (0-based)
+    START_COL = 6   # columna G (0-based)
+
+    # Escribimos la tabla desplazada (dejamos la cabecera para formatearla nosotros)
+    tabla.to_excel(
+        writer,
+        sheet_name="Tabla Consolidada",
+        index=False,
+        header=False,
+        startrow=START_ROW + 1,  # datos comienzan en G7
+        startcol=START_COL       # columna G
+    )
 
     workbook  = writer.book
     worksheet = writer.sheets["Tabla Consolidada"]
 
-    # === Formatos ===
+    # ====== Hoja blanca y sin cuadrícula ======
+    worksheet.hide_gridlines(2)      # 2: oculta en pantalla y en impresión
+
+    # ====== Formatos ======
     fmt_titulo = workbook.add_format({
         "bold": True, "font_color": "red",
-        "font_size": 14, "align": "center"
+        "font_size": 14, "align": "center", "valign": "vcenter"
     })
-    fmt_header = workbook.add_format({"bold": True, "border": 1, "align": "center"})
+    fmt_header = workbook.add_format({"bold": True, "border": 1, "align": "center", "valign": "vcenter"})
     fmt_sunday = workbook.add_format({"font_color": "red", "bold": True, "border": 1, "align": "center"})
     fmt_total  = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1, "align": "center"})
     fmt_num    = workbook.add_format({"num_format": "#,##0.##", "border": 1, "align": "center"})
     fmt_text   = workbook.add_format({"border": 1, "align": "center"})
     fmt_bold_num = workbook.add_format({"bold": True, "num_format": "#,##0.##", "border": 1, "align": "center"})
-    fmt_border_ext = workbook.add_format({"border": 2})
+    fmt_border_ext = workbook.add_format({"border": 2})  # para contorno grueso
 
-    # === Título dinámico centrado ===
-    last_col = len(tabla.columns) - 1
+    # ====== Título alineado a la tabla ======
+    last_col_idx = START_COL + len(tabla.columns) - 1
+    # Usa tu título dinámico, pero sólo los ítems (dos palabras por ítem si así lo dejaste)
     titulo_excel = titulo_tabla.replace("Tabla diaria consolidada — ", "").replace("(unidades)", "").strip()
-    worksheet.merge_range(1, 0, 1, last_col, f"TABLA CONSOLIDADA — {titulo_excel.upper()}", fmt_titulo)
+    # Título en la fila 4 (0-based = 3), alineado a las columnas de la tabla
+    TITLE_ROW = START_ROW - 2  # G4
+    worksheet.merge_range(TITLE_ROW, START_COL, TITLE_ROW, last_col_idx,
+                          f"TABLA CONSOLIDADA — {titulo_excel.upper()}",
+                          fmt_titulo)
 
-    # === Ajustes de ancho de columnas ===
-    for i, col in enumerate(tabla.columns):
-        col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-        worksheet.set_column(i, i, col_width)
+    # ====== Cabecera en G6 (fila START_ROW) ======
+    header_row = START_ROW
+    for c, col_name in enumerate(tabla.columns):
+        worksheet.write(header_row, START_COL + c, col_name, fmt_header)
 
-    # === Reescribir cabecera con formato ===
-    for c in range(0, last_col + 1):
-        worksheet.write(7, c, tabla.columns[c], fmt_header)
+    # ====== Ajuste de anchos ======
+    for c, col_name in enumerate(tabla.columns):
+        col_series = tabla.iloc[:, c].astype(str)
+        width = max(col_series.map(len).max(), len(col_name)) + 2
+        worksheet.set_column(START_COL + c, START_COL + c, width)
 
-    last_row = len(tabla) + 7  # porque empezamos en la fila 8 (índice 7)
-
-    # === Domingos en rojo ===
-    worksheet.conditional_format(
-        8, 0, last_row - 1, last_col,
-        {"type": "formula", "criteria": 'RIGHT($A9,3)="dom"', "format": fmt_sunday}
-    )
-
-    # === Cuerpo de la tabla ===
-    for r in range(8, last_row):
-        for c in range(0, last_col + 1):
-            val = tabla.iloc[r - 8, c]
+    # ====== Escribir cuerpo con formato ======
+    data_first_row = START_ROW + 1
+    data_last_row  = data_first_row + len(tabla) - 2  # hasta la penúltima (última es total)
+    for r in range(data_first_row, data_last_row + 1):
+        for c in range(len(tabla.columns)):
+            val = tabla.iloc[(r - data_first_row), c]
             if c == 0:
-                worksheet.write(r, c, val, fmt_text)
+                worksheet.write(r, START_COL + c, val, fmt_text)
             else:
                 if isinstance(val, (int, float)):
-                    worksheet.write_number(r, c, val, fmt_num)
+                    worksheet.write_number(r, START_COL + c, val, fmt_num)
                 else:
-                    worksheet.write(r, c, val, fmt_text)
+                    worksheet.write(r, START_COL + c, val, fmt_text)
 
-    # === Fila total final (última fila + 1) ===
-    total_row = last_row
-    for c in range(0, last_col + 1):
+    # ====== Fila de acumulado (última fila de la tabla) ======
+    total_row = data_last_row + 1
+    for c in range(len(tabla.columns)):
         val = tabla.iloc[-1, c]
         if c > 0 and isinstance(val, (int, float)):
-            worksheet.write_number(total_row, c, val, fmt_total)
+            worksheet.write_number(total_row, START_COL + c, val, fmt_total)
         else:
-            worksheet.write(total_row, c, val, fmt_total)
+            worksheet.write(total_row, START_COL + c, val, fmt_total)
 
-    # === Columna "T. Dia" en negrita ===
+    # ====== Domingos en rojo (columna "Fecha") ======
+    # Construimos la referencia absoluta de columna "Fecha" en la primera fila de datos
+    fecha_col_abs_cell = xl_rowcol_to_cell(data_first_row, START_COL, row_abs=False, col_abs=True)  # p.ej. $G7
+    worksheet.conditional_format(
+        data_first_row, START_COL,
+        total_row - 1, START_COL + len(tabla.columns) - 1,
+        {"type": "formula", "criteria": f'RIGHT({fecha_col_abs_cell},3)="dom"', "format": fmt_sunday}
+    )
+
+    # ====== Columna "T. Dia" en negrita dentro del rango de datos ======
     if "T. Dia" in tabla.columns:
-        col_tdia = tabla.columns.get_loc("T. Dia")
-        for r in range(8, total_row):
-            val = tabla.iloc[r - 8, col_tdia]
+        col_tdia_off = tabla.columns.get_loc("T. Dia")
+        col_abs = START_COL + col_tdia_off
+        for r in range(data_first_row, total_row):
+            val = tabla.iloc[(r - data_first_row), col_tdia_off]
             if isinstance(val, (int, float)):
-                worksheet.write_number(r, col_tdia, val, fmt_bold_num)
+                worksheet.write_number(r, col_abs, val, fmt_bold_num)
             else:
-                worksheet.write(r, col_tdia, val, fmt_text)
+                worksheet.write(r, col_abs, val, fmt_text)
 
-    # === Borde grueso alrededor de toda la tabla ===
-    worksheet.conditional_format(7, 0, total_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
+    # ====== Contorno grueso SÓLO alrededor de la tabla ======
+    # Rectángulo que cubre cabecera + cuerpo + total
+    top, left  = header_row, START_COL
+    bottom, right = total_row, START_COL + len(tabla.columns) - 1
+    # Borde superior, inferior, izquierdo, derecho
+    worksheet.conditional_format(top, left, top, right, {"type": "no_errors", "format": fmt_border_ext})
+    worksheet.conditional_format(bottom, left, bottom, right, {"type": "no_errors", "format": fmt_border_ext})
+    worksheet.conditional_format(top, left, bottom, left, {"type": "no_errors", "format": fmt_border_ext})
+    worksheet.conditional_format(top, right, bottom, right, {"type": "no_errors", "format": fmt_border_ext})
 
 
 # === BOTONES (lado a lado, alineados a la izquierda) ===
