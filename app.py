@@ -1,322 +1,191 @@
 import os, sys, io
 import streamlit as st
 import pandas as pd
-import altair as alt
 
+# =============================
+# Bootstrap imports
+# =============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from utils import (
-    prepare_dataframe, items_display_list,
-    build_daily_table_all_range, build_numeric_pivot_range
+    prepare_dataframe,
+    items_display_list,
+    build_daily_table_all_range,
+    build_numeric_pivot_range,
 )
 
-st.set_page_config(page_title="Ventas x Ítem — Tabla y Gráficas", layout="wide")
-st.title("📊 Ventas por Ítem(s) x Sedes — Tabla única + Gráficas")
-st.caption("Rango de fechas, todas las sedes (Mercamio → Mercatodo → Bogotá), guiones en lugar de 0, totales resaltados, domingos en rojo y varias gráficas.")
+# =============================
+# Page config
+# =============================
+st.set_page_config(page_title="Ventas por Item x Sedes", layout="wide")
+st.title("Ventas por Item x Sedes - Tabla")
 
 with st.expander("Formato esperado del CSV", expanded=False):
-    st.markdown("`empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum`")
+    st.write(
+        "empresa, fecha_dcto, id_co, id_item, descripcion, linea, und_dia, venta_sin_impuesto_dia, und_acum, venta_sin_impuesto_acum"
+    )
 
-uploaded = st.file_uploader("📥 Cargar CSV", type=["csv"])
+# =============================
+# Uploader
+# =============================
+uploaded = st.file_uploader("Cargar CSV", type=["csv"]) 
 if uploaded is None:
     st.info("Sube un archivo CSV para comenzar.")
     st.stop()
 
-
-# ====== Carga y preparación ======
+# =============================
+# Load and prepare
+# =============================
 try:
     raw = pd.read_csv(uploaded)
-    df = prepare_dataframe(raw)
+    df = prepare_dataframe(raw)  # agrega empresa_norm, fecha y normaliza numericos
 except Exception as e:
     st.error(f"No se pudo procesar el CSV: {e}")
     st.stop()
 
+# =============================
+# Company multiselect (filtra antes de todo)
+# =============================
+emp_col = "empresa_norm" if "empresa_norm" in df.columns else ("empresa" if "empresa" in df.columns else None)
+if emp_col is None:
+    st.error("El archivo no contiene columna de empresa ni empresa_norm.")
+    st.stop()
+
+emp_options = sorted(df[emp_col].dropna().astype(str).unique().tolist())
+if not emp_options:
+    st.error("No se encontraron empresas en el archivo.")
+    st.stop()
+
+emp_sel = st.multiselect(
+    "Empresas",
+    options=emp_options,
+    default=emp_options[:1],
+    help="Puedes elegir una o varias empresas. La tabla se actualizará con la selección."
+)
+
+if not emp_sel:
+    st.info("Selecciona al menos una empresa para continuar.")
+    st.stop()
+
+# filtrar por empresas seleccionadas
+df = df[df[emp_col].isin(emp_sel)].copy()
+if df.empty:
+    st.warning("No hay datos para las empresas seleccionadas.")
+    st.stop()
+
+# =============================
+# Fecha default por subset filtrado
+# =============================
 if df["fecha"].notna().any():
-    min_d = df["fecha"].min().date()
-    max_d = df["fecha"].max().date()
+    min_d = pd.to_datetime(df["fecha"]).min().date()
+    max_d = pd.to_datetime(df["fecha"]).max().date()
 else:
-    st.error("No hay fechas válidas en el archivo.")
+    st.error("No hay fechas válidas en el archivo para las empresas seleccionadas.")
     st.stop()
 
-c1, c2, c3 = st.columns([2,1,1])
+c1, c2, c3 = st.columns([2, 1, 1])
 with c1:
-    date_range = st.date_input("Rango de fechas (YYYY-MM-DD)", value=(min_d, max_d), format="YYYY-MM-DD")
+    date_range = st.date_input(
+        "Rango de fechas (YYYY-MM-DD)", value=(min_d, max_d), format="YYYY-MM-DD"
+    )
 with c2:
-    limit = st.number_input("Límite de ítems", min_value=1, max_value=10, value=10, step=1)
+    limit = st.number_input("Limite de items", min_value=1, max_value=50, value=10, step=1)
 
+# =============================
+# Items selector (opcional). Si está vacío, usamos todos o top N
+# =============================
 items_all = items_display_list(df)
-items_sel = st.multiselect("Ítems (por ID o descripción)", items_all, max_selections=limit)
-if not items_sel:
-    st.info("Selecciona al menos un ítem.")
-    st.stop()
+items_sel = st.multiselect(
+    "Items (por ID o descripcion)", items_all, max_selections=limit,
+    help="Opcional. Si no eliges ninguno, se usan todos (o el top mostrado)."
+)
 
 start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+mask_date = (df["fecha"] >= start) & (df["fecha"] <= end)
+df_f = df.loc[mask_date].copy()
 
-# Filtrar por rango + ítems
-mask = (df["fecha"] >= start) & (df["fecha"] <= end)
-df_f = df.loc[mask].copy()
+# filtrar por items si hay seleccion (acepta ID o descripcion parcial del helper)
+if items_sel:
+    ids = set()
+    descr_needles = []
+    for it in items_sel:
+        s = str(it)
+        if " - " in s:
+            ids.add(s.split(" - ", 1)[0].strip())
+        elif s.isdigit() or s.strip().isdigit():
+            ids.add(s.strip())
+        else:
+            descr_needles.append(s.lower().strip())
 
-ids = set()
-descr_needles = []
-for it in items_sel:
-    s = str(it)
-    if " - " in s:
-        ids.add(s.split(" - ", 1)[0].strip())
-    elif s.isdigit() or s.strip().isdigit():
-        ids.add(s.strip())
-    else:
-        descr_needles.append(s.lower().strip())
+    ok = pd.Series(False, index=df_f.index)
+    if ids:
+        ok = ok | df_f["id_item"].astype(str).isin(ids)
+    if descr_needles:
+        pat = "|".join([pd.re.escape(t) for t in descr_needles])
+        ok = ok | df_f["descripcion"].str.lower().str.contains(pat, na=False)
+    df_f = df_f[ok]
 
-ok = pd.Series(False, index=df_f.index)
-if ids:
-    ok = ok | df_f["id_item"].astype(str).isin(ids)
-if descr_needles:
-    pat = "|".join([pd.re.escape(t) for t in descr_needles])
-    ok = ok | df_f["descripcion"].str.lower().str.contains(pat, na=False)
-df_f = df_f[ok]
+if df_f.empty:
+    st.warning("No hay registros para los filtros aplicados.")
+    st.stop()
 
-# ====== Tabla principal ======
+# =============================
+# Tabla principal
+# =============================
+emp_tag = "_".join(emp_sel) if len(emp_sel) > 1 else emp_sel[0]
+st.subheader(f"Tabla diaria consolidada (unidades) - {emp_tag}")
+
 tabla = build_daily_table_all_range(df_f, start, end)
-
-st.subheader("Tabla diaria consolidada (unidades)")
 if tabla.empty:
-    st.warning("No se encontraron registros para los filtros aplicados.")
+    st.warning("No se encontraron registros para el rango.")
 else:
-    # Estilos en pantalla (Streamlit)
-    def style_headers(df_styler):
-        return df_styler.set_table_styles([{'selector': 'th', 'props': [('font-weight', 'bold')]}])
+    # estilos basicos en pantalla
     def style_totals(row):
         is_total = row.name == len(tabla) - 1
-        return ['font-weight: bold; background-color: #e6f2ff' if is_total else '' for _ in row]
+        return ["font-weight: bold; background-color: #e6f2ff" if is_total else "" for _ in row]
+
     def style_sundays(row):
-        is_sunday = isinstance(row['Fecha'], str) and ('/dom' in row['Fecha'])
+        is_sunday = isinstance(row["Fecha"], str) and ("/dom" in row["Fecha"])
         if row.name == len(tabla) - 1:
-            return ['' for _ in row]
-        return ['color: red; font-weight: bold' if is_sunday else '' for _ in row]
+            return ["" for _ in row]
+        return ["color: red; font-weight: bold" if is_sunday else "" for _ in row]
 
     sty = tabla.style.apply(style_totals, axis=1).apply(style_sundays, axis=1)
     if "T. Dia" in tabla.columns:
-        sty = sty.set_properties(subset=['T. Dia'], **{'font-weight': 'bold'})
-    sty = style_headers(sty)
-    sty = sty.format(precision=2, na_rep="-")  # enteros como enteros / decimales hasta 2
+        sty = sty.set_properties(subset=["T. Dia"], **{"font-weight": "bold"})
+    sty = sty.format(precision=2, na_rep="-")
 
     st.dataframe(sty, use_container_width=True)
 
-        # ====== DESCARGAS: Excel y CSV (XLSXWRITER corregido) ======
-output_excel = io.BytesIO()
-output_csv = io.BytesIO()
+# =============================
+# Descargas
+# =============================
+excel_name = f"tabla_diaria_items_{emp_tag}_sedes.xlsx"
+csv_name = f"tabla_diaria_items_{emp_tag}_sedes.csv"
 
-# CSV
-tabla.to_csv(output_csv, index=False, encoding="utf-8-sig")
+buffer_xlsx = io.BytesIO()
+with pd.ExcelWriter(buffer_xlsx, engine="xlsxwriter") as writer:
+    tabla.to_excel(writer, index=False, sheet_name="Tabla")
 
-with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-    tabla.to_excel(writer, index=False, sheet_name="Tabla Consolidada")
+buffer_csv = io.BytesIO()
+tabla.to_csv(buffer_csv, index=False, encoding="utf-8-sig")
 
-    workbook  = writer.book
-    worksheet = writer.sheets["Tabla Consolidada"]
-
-    # Formatos
-    fmt_header = workbook.add_format({"bold": True, "border": 1})
-    fmt_sunday = workbook.add_format({"font_color": "red", "bold": True, "border": 1})
-    fmt_total  = workbook.add_format({"bold": True, "bg_color": "#e6f2ff", "border": 1})
-    fmt_num    = workbook.add_format({"num_format": "#,##0.##", "border": 1})
-    fmt_text   = workbook.add_format({"border": 1})
-    fmt_bold_num = workbook.add_format({"bold": True, "num_format": "#,##0.##", "border": 1})
-    fmt_border_ext = workbook.add_format({"border": 2})
-
-    last_row = len(tabla)                 # índice de fila en Excel para "Acum. Rango"
-    last_col = len(tabla.columns) - 1
-
-    # Ancho de columnas (SIN formato de columna)
-    for i, col in enumerate(tabla.columns):
-        col_width = max(tabla[col].astype(str).map(len).max(), len(col)) + 2
-        worksheet.set_column(i, i, col_width)  # <— solo ancho
-
-    # Re-escribir cabecera celda por celda (evita que se derrame a la derecha)
-    for c in range(0, last_col + 1):
-        worksheet.write(0, c, tabla.columns[c], fmt_header)
-
-    # Domingos en rojo (solo dentro del rango)
-    worksheet.conditional_format(
-        1, 0, last_row - 1, last_col,
-        {"type": "formula", "criteria": 'RIGHT($A2,3)="dom"', "format": fmt_sunday}
-    )
-
-    # Contenido normal con formato numérico/texto (bordes finos internos)
-    # Recorremos las filas de datos (2..last_row) y columnas (0..last_col)
-    for r in range(1, last_row):  # filas de datos (sin incluir fila de acumulado)
-        for c in range(0, last_col + 1):
-            val = tabla.iloc[r - 1, c]
-            if c == 0:
-                # Columna Fecha (texto)
-                worksheet.write(r, c, val, fmt_text)
-            else:
-                # Numérico o texto "-"
-                if isinstance(val, (int, float)):
-                    worksheet.write_number(r, c, val, fmt_num)
-                else:
-                    worksheet.write(r, c, val, fmt_text)
-
-    # Fila "Acum. Rango:" SOLO hasta last_col (sin derramar)
-    for c in range(0, last_col + 1):
-        val = tabla.iloc[-1, c]
-        # Si es numérico, respeta num_format, si es texto, aplícalo como texto
-        if c > 0 and isinstance(val, (int, float)):
-            worksheet.write_number(last_row, c, val, fmt_total)
-        else:
-            worksheet.write(last_row, c, val, fmt_total)
-
-    # Columna "T. Dia" en negrita — SOLO dentro del rango usado
-    if "T. Dia" in tabla.columns:
-        col_tdia = tabla.columns.get_loc("T. Dia")
-        # Cabecera ya quedó en negrita; formateamos datos + acumulado
-        for r in range(1, last_row + 1):
-            val = tabla.iloc[r - 1, col_tdia] if r <= last_row else None
-            if r == last_row:
-                # ya la escribimos con fmt_total, no tocar
-                continue
-            if isinstance(val, (int, float)):
-                worksheet.write_number(r, col_tdia, val, fmt_bold_num)
-            else:
-                worksheet.write(r, col_tdia, val, fmt_text)
-
-    # Borde exterior grueso solo contorno
-    # Superior
-    worksheet.conditional_format(0, 0, 0, last_col, {"type": "no_errors", "format": fmt_border_ext})
-    # Inferior
-    worksheet.conditional_format(last_row, 0, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
-    # Izquierda
-    worksheet.conditional_format(0, 0, last_row, 0, {"type": "no_errors", "format": fmt_border_ext})
-    # Derecha
-    worksheet.conditional_format(0, last_col, last_row, last_col, {"type": "no_errors", "format": fmt_border_ext})
-
-# === BOTONES (lado a lado, alineados a la izquierda) ===
-b1, b2, _ = st.columns([1, 1, 6])  # los dos primeros para botones, el tercero es "espaciador"
-with b1:
+col_d1, col_d2, _ = st.columns([1, 1, 6])
+with col_d1:
     st.download_button(
-        "💾 Descargar Excel",
-        data=output_excel.getvalue(),
-        file_name="tabla_diaria_items_sedes_TODAS.xlsx",
+        "Descargar Excel",
+        data=buffer_xlsx.getvalue(),
+        file_name=excel_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+        use_container_width=True,
     )
-with b2:
+with col_d2:
     st.download_button(
-        "🧾 Descargar CSV",
-        data=output_csv.getvalue(),
-        file_name="tabla_diaria_items_sedes_TODAS.csv",
+        "Descargar CSV",
+        data=buffer_csv.getvalue(),
+        file_name=csv_name,
         mime="text/csv",
-        use_container_width=True
+        use_container_width=True,
     )
-
-st.markdown("---")
-
-# ====== GRÁFICAS (Altair) ======
-st.subheader("Gráficas")
-
-# Pivot numérico
-pivot_num = build_numeric_pivot_range(df_f, start, end)
-
-# DataFrames para charts
-df_line = pivot_num.rename_axis('fecha').reset_index()
-df_line['fecha_dia'] = pd.to_datetime(df_line['fecha']).dt.date
-df_line = df_line.rename(columns={'T. Dia': 'T_Dia'})
-
-df_stack = (
-    pivot_num.drop(columns=["T. Dia"])
-    .rename_axis("fecha").reset_index()
-    .melt(id_vars="fecha", var_name="sede", value_name="unidades")
-)
-df_stack["fecha_dia"] = pd.to_datetime(df_stack["fecha"]).dt.date
-
-acum_por_sede = (
-    pivot_num.drop(columns=["T. Dia"])
-    .sum(axis=0)
-    .sort_values(ascending=False)
-    .rename_axis("sede")
-    .reset_index(name="unidades")
-)
-
-# selector de layout
-layout = st.radio("Distribución de gráficas", ["Una columna", "Dos columnas"], index=0, horizontal=True)
-
-# charts
-line_chart = (
-    alt.Chart(df_line, title="Total por día (T. Dia)")
-    .mark_line(point=True)
-    .encode(
-        x=alt.X("fecha_dia:T", axis=alt.Axis(title="Fecha", format="%d-%b")),
-        y=alt.Y("T_Dia:Q", axis=alt.Axis(title="Unidades")),
-        tooltip=[
-            alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
-            alt.Tooltip("T_Dia:Q", title="T. Dia", format=",.2f"),
-        ],
-    )
-    .properties(height=260)
-    .interactive()
-)
-
-stack_chart = (
-    alt.Chart(df_stack, title="Unidades por sede por día (apilado)")
-    .mark_bar()
-    .encode(
-        x=alt.X("fecha_dia:T", axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
-        y=alt.Y("unidades:Q", stack="zero", axis=alt.Axis(title="Unidades")),
-        color=alt.Color("sede:N", legend=alt.Legend(title="Sede")),
-        tooltip=[
-            alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
-            alt.Tooltip("sede:N", title="Sede"),
-            alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
-        ],
-    )
-    .properties(height=320)
-    .interactive()
-)
-
-heatmap = (
-    alt.Chart(df_stack, title="Mapa de calor: unidades por sede y día")
-    .mark_rect()
-    .encode(
-        x=alt.X("fecha_dia:T", axis=alt.Axis(title="Fecha", format="%d-%b", labelAngle=-45)),
-        y=alt.Y("sede:N", sort='-x', axis=alt.Axis(title="Sede")),
-        color=alt.Color("unidades:Q", scale=alt.Scale(scheme="inferno"), legend=alt.Legend(title="Unidades")),
-        tooltip=[
-            alt.Tooltip("fecha_dia:T", title="Fecha", format="%Y-%m-%d"),
-            alt.Tooltip("sede:N", title="Sede"),
-            alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
-        ],
-    )
-    .properties(height=320)
-    .interactive()
-)
-
-acum_chart = (
-    alt.Chart(acum_por_sede, title="Acumulado del rango por sede")
-    .mark_bar()
-    .encode(
-        x=alt.X("sede:N", sort="-y", axis=alt.Axis(title="Sede")),
-        y=alt.Y("unidades:Q", axis=alt.Axis(title="Unidades")),
-        tooltip=[
-            alt.Tooltip("sede:N", title="Sede"),
-            alt.Tooltip("unidades:Q", title="Unidades", format=",.2f"),
-        ],
-    )
-    .properties(height=260)
-    .interactive()
-)
-
-if layout == "Una columna":
-    st.altair_chart(line_chart, use_container_width=True)
-    st.altair_chart(stack_chart, use_container_width=True)
-    st.altair_chart(heatmap, use_container_width=True)
-    st.altair_chart(acum_chart, use_container_width=True)
-else:
-    colA, colB = st.columns(2)
-    with colA:
-        st.altair_chart(line_chart, use_container_width=True)
-        st.altair_chart(heatmap, use_container_width=True)
-    with colB:
-        st.altair_chart(stack_chart, use_container_width=True)
-        st.altair_chart(acum_chart, use_container_width=True)
