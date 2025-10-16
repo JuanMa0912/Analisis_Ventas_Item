@@ -110,15 +110,22 @@ for it in current:
 st.session_state["items_order"] = [it for it in st.session_state["items_order"] if it in current]
 
 def _first_word_from_option(opt: str) -> str:
-    # si viene "123 - Descripción del producto", tomar solo la DESCRIPCIÓN
+    # Si viene "123 - Descripción del producto", tomar solo la descripción
     desc = opt.split(" - ", 1)[1] if " - " in opt else opt
     desc = desc.strip()
+
+    # Limpieza básica: quita caracteres especiales al final (.,;:! etc)
+    desc = re.sub(r"[^\wÁÉÍÓÚáéíóúÑñ/ ]+", "", desc)
+
     if not desc:
         return ""
-    # primera palabra alfanumérica (unicode)
-    desc = re.sub(r"[_\s]+", " ", desc)
-    primera = desc.split()[0]
-    return primera.strip()
+
+    # Divide en palabras separadas por espacio, conservando expresiones como "C/RES"
+    palabras = desc.split()
+
+    # Toma hasta 2 palabras
+    primeras = palabras[:2]
+    return " ".join(primeras)
 
 if st.session_state["items_order"]:
     first_words = [_first_word_from_option(s) for s in st.session_state["items_order"]]
